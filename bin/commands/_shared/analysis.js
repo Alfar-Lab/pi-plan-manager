@@ -147,8 +147,12 @@ function lintPhase(phase) {
 	}
 
 	for (const task of tasks) {
-		const missing = missingSections(task.detail);
-		if (missing.length) warnings.push(`${task.id}: detail missing context-packet sections: ${missing.join(", ")}`);
+		const d = task.details || {};
+		const missing = [];
+		if (!d.goal?.trim()) missing.push("goal");
+		if (!d.steps?.length) missing.push("steps");
+		if (!d.verify?.trim()) missing.push("verify");
+		if (missing.length) warnings.push(`${task.id}: details missing context-packet fields: ${missing.join(", ")}`);
 		if (!task.agent) warnings.push(`${task.id}: no agent role hint (explore|implement|review|verify)`);
 	}
 	return { errors, warnings };

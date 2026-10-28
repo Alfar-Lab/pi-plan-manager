@@ -1,7 +1,15 @@
 "use strict";
 
 const { createOperation } = require("../../createOperation");
-const { initHandler, migrateHandler, cleanRootsHandler, dashboardServeHandler, dashboardHealthHandler, validatePort } = require("./helper");
+const {
+	initHandler,
+	migrateHandler,
+	cleanRootsHandler,
+	dashboardServeHandler,
+	dashboardHealthHandler,
+	validatePort,
+} = require("./helper");
+const { migrateFormatHandler } = require("./format");
 
 module.exports = [
 	createOperation({
@@ -47,5 +55,13 @@ module.exports = [
 		handler: dashboardHealthHandler,
 		options: ["port"],
 		validators: { port: validatePort },
+	}),
+
+	createOperation({
+		name: "migrate_format",
+		usage: "ppm migrate_format --plan <name> [--dry-run] [--project <path>]",
+		handler: migrateFormatHandler,
+		options: ["project", "plan", "dry-run"],
+		required: ["plan"],
 	}),
 ];

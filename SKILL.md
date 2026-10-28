@@ -25,7 +25,7 @@ Read the routed flow file in full before acting. Its instructions are mandatory;
 Before sharing or recommending any dashboard URL, run `ppm check_dashboard [--port <port>]` (default port `4173`). The command probes `http://127.0.0.1:<port>/api/tasks` with a 2-second timeout:
 
 - `Dashboard running: <page-url>` (exit 0): share that URL with the user; do not invent a different port or host.
-- `Dashboard not running: <page-url>` (exit 1): start it yourself with `ppm dashboard_serve [--project <path>] [--port <port>]` as a long-lived background process (do not block the agent on it), then re-run `ppm check_dashboard` to confirm and share the verified URL. If `dashboard_serve` reports the port is already in use, pick another `--port`.
+- `Dashboard not running: <page-url>` (exit 1): start it yourself with `ppm dashboard_serve [--port <port>]` as a long-lived background process (do not block the agent on it), then re-run `ppm check_dashboard` to confirm and share the verified URL. If `dashboard_serve` reports the port is already in use, pick another `--port`.
 - `Dashboard unhealthy: ...` (exit 2: non-200, non-JSON, or no response within 2s): something else holds the port or the server is broken. Report the exact diagnostic; do not pretend the dashboard is usable. Use a different `--port` if the user wants a dashboard now.
 - `Dashboard check failed: ...` (exit 1): unexpected network error. Report it verbatim.
 

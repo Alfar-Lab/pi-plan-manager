@@ -28,21 +28,77 @@
     return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
   }
 
+  function normalizeDetails(task) {
+    if (task.details && typeof task.details === "object" && !Array.isArray(task.details)) {
+      if (typeof task.details.goal !== "string") task.details.goal = String(task.details.goal || "");
+      if (typeof task.details.contract !== "string") task.details.contract = String(task.details.contract || "");
+      if (!Array.isArray(task.details.steps)) {
+        task.details.steps = typeof task.details.steps === "string" ? [task.details.steps] : [];
+      } else {
+        task.details.steps = task.details.steps.map(function(s) { return String(s || ""); });
+      }
+      if (typeof task.details.verify !== "string") task.details.verify = String(task.details.verify || "");
+      return;
+    }
+    var str = typeof task.detail === "string" ? task.detail : "";
+    var goalMatch = /Goal:\s*([\s\S]*?)(?=Contract:|Steps:|Verify:|Done when:|$)/i.exec(str);
+    var contractMatch = /Contract:\s*([\s\S]*?)(?=Goal:|Steps:|Verify:|Done when:|$)/i.exec(str);
+    var stepsMatch = /Steps:\s*([\s\S]*?)(?=Goal:|Contract:|Verify:|Done when:|$)/i.exec(str);
+    var verifyMatch = /Verify:\s*([\s\S]*?)(?=Goal:|Contract:|Steps:|Done when:|$)/i.exec(str);
+
+    var stepsStr = stepsMatch ? stepsMatch[1].trim() : "";
+    var steps = stepsStr ? stepsStr.split("\n").map(function(s) { return s.replace(/^[-*\d.\s]+/, "").trim(); }).filter(Boolean) : [];
+
+    task.details = {
+      goal: goalMatch ? goalMatch[1].trim() : str,
+      contract: contractMatch ? contractMatch[1].trim() : "",
+      steps: steps,
+      verify: verifyMatch ? verifyMatch[1].trim() : ""
+    };
+    delete task.detail;
+  }
+
+  var TIMESTAMP_REGEX = /^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]\s?/;
+
+  function normalizeProgress(task) {
+    if (Array.isArray(task.progress)) {
+      task.progress = task.progress.map(function(item) {
+        if (item && typeof item === "object") return { time: String(item.time || ""), detail: String(item.detail || "") };
+        return { time: "", detail: String(item || "") };
+      });
+      return;
+    }
+    if (typeof task.progress === "string" && task.progress.trim()) {
+      var entries = [];
+      task.progress.split("\n").forEach(function(line) {
+        var match = line.match(TIMESTAMP_REGEX);
+        if (match) entries.push({ time: match[1], detail: line.slice(match[0].length) });
+        else if (entries.length) entries[entries.length - 1].detail += "\n" + line;
+        else entries.push({ time: "", detail: line });
+      });
+      task.progress = entries;
+      return;
+    }
+    task.progress = [];
+  }
+
   // fail_desc is folded into progress (not dropped) so no failure context is lost.
   function normalizeLegacy(phase) {
     var tasks = phase && phase.tasks;
     if (!Array.isArray(tasks)) return;
     tasks.forEach(function (item) {
       if (!item || typeof item !== "object") return;
-      if (item.progress === undefined) item.progress = "";
       if (item.status === "start") item.status = "todo";
       if ("fail_desc" in item) {
         var legacy = typeof item.fail_desc === "string" ? item.fail_desc.trim() : "";
-        if (legacy && typeof item.progress === "string" && item.progress.indexOf(legacy) === -1) {
-          item.progress = [item.progress.trim(), "[legacy fail_desc] " + legacy].filter(Boolean).join("\n");
+        if (legacy) {
+          if (!Array.isArray(item.progress)) normalizeProgress(item);
+          item.progress.push({ time: "", detail: "[legacy fail_desc] " + legacy });
         }
         delete item.fail_desc;
       }
+      normalizeDetails(item);
+      normalizeProgress(item);
     });
   }
 
@@ -118,13 +174,19 @@
     tasks.forEach(function (item, index) {
       var label = "tasks[" + index + "]";
       if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(label + " must be an object");
-      ["id", "title", "detail", "status"].forEach(function (field) {
+      ["id", "title", "status"].forEach(function (field) {
         if (typeof item[field] !== "string" || !item[field].trim()) throw new Error(label + "." + field + " must be a non-empty string");
       });
       if (ids.has(item.id)) throw new Error("duplicate task id: " + item.id);
       ids.add(item.id);
       if (!VALID_STATUSES.has(item.status)) throw new Error(label + ".status is invalid: " + item.status);
-      if (typeof item.progress !== "string") throw new Error(label + ".progress must be a string");
+      if (!item.details || typeof item.details !== "object" || Array.isArray(item.details)) throw new Error(label + ".details must be an object");
+      if (typeof item.details.goal !== "string") throw new Error(label + ".details.goal must be a string");
+      if (!Array.isArray(item.details.steps)) throw new Error(label + ".details.steps must be an array");
+      if (!Array.isArray(item.progress)) throw new Error(label + ".progress must be an array");
+      item.progress.forEach(function (p) {
+        if (!p || typeof p !== "object" || typeof p.detail !== "string") throw new Error(label + ".progress entries must be objects with detail string");
+      });
       validateFiles(item, index);
       validateAgent(item, index);
     });
@@ -296,8 +358,12 @@
     }
 
     tasks.forEach(function (task) {
-      var missing = missingSections(task.detail);
-      if (missing.length) warnings.push(task.id + ": detail missing context-packet sections: " + missing.join(", "));
+      var d = task.details || {};
+      var missing = [];
+      if (!d.goal || !String(d.goal).trim()) missing.push("goal");
+      if (!Array.isArray(d.steps) || !d.steps.length) missing.push("steps");
+      if (!d.verify || !String(d.verify).trim()) missing.push("verify");
+      if (missing.length) warnings.push(task.id + ": details missing context-packet fields: " + missing.join(", "));
       if (!task.agent) warnings.push(task.id + ": no agent role hint (explore|implement|review|verify)");
     });
     return { errors: errors, warnings: warnings };

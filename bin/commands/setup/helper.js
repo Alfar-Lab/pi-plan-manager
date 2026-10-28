@@ -183,7 +183,7 @@ function dashboardResponse(response, status, body, contentType) {
 }
 
 function dashboardServeHandler(options) {
-	const htmlPath = path.resolve(__dirname, "../../../templates/task.html");
+	const htmlPath = path.resolve(__dirname, "../../../panel/index.html");
 	const port = options.port === undefined ? 4173 : Number(options.port);
 	// DNS-rebinding guard: a hostile page resolving its own domain to 127.0.0.1 would send a foreign Host header.
 	const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
@@ -193,7 +193,10 @@ function dashboardServeHandler(options) {
 		const route = new URL(request.url, "http://127.0.0.1").pathname;
 		try {
 			if (route === "/api/tasks") return dashboardResponse(response, 200, JSON.stringify(readDashboardData(options)), "application/json; charset=utf-8");
-			if (route === "/" || route === "/task.html") return dashboardResponse(response, 200, fs.readFileSync(htmlPath), "text/html; charset=utf-8");
+			if (route === "/" || route === "/index.html" || route === "/task.html") return dashboardResponse(response, 200, fs.readFileSync(htmlPath), "text/html; charset=utf-8");
+			if (route === "/ppm-data.js") return dashboardResponse(response, 200, 'window.PpmData = { loadDashboard: async () => (await fetch("/api/tasks", { cache: "no-store" })).json() };', "application/javascript; charset=utf-8");
+			if (route === "/app.js") return dashboardResponse(response, 200, fs.readFileSync(path.resolve(__dirname, "../../../panel/app.js")), "application/javascript; charset=utf-8");
+			if (route === "/tailwind.js") return dashboardResponse(response, 200, fs.readFileSync(path.resolve(__dirname, "../../../panel/tailwind.js")), "application/javascript; charset=utf-8");
 			return dashboardResponse(response, 404, JSON.stringify({ error: "Not found" }), "application/json; charset=utf-8");
 		} catch (error) {
 			return dashboardResponse(response, 500, JSON.stringify({ error: error.message }), "application/json; charset=utf-8");

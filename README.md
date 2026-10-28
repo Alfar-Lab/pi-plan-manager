@@ -180,7 +180,7 @@ ppm task_write_progress --plan <name> --phase <phase_x> --task-id <id> --progres
 ## Dashboard
 
 ```bash
-ppm dashboard_serve            # http://127.0.0.1:4173/task.html
+ppm dashboard_serve            # http://127.0.0.1:4173/index.html (or /task.html)
 ```
 
 Shows every registered project (or only `--project`). Plans are sorted by completion, lowest first. Phases and tasks are collapsible, and the current phase opens by default. Buttons copy ready-made Execute/Audit prompts for your agent. The page loads Tailwind and fonts from public CDNs, so it needs internet access to render styled.
@@ -189,7 +189,7 @@ Shows every registered project (or only `--project`). Plans are sorted by comple
 
 - Plans and task data: `<project>/.ppm/`
 - Registered project roots: `~/.config/project-plan-manager/config.json`
-- Dashboard page: served from this package's `templates/task.html`; nothing is copied into projects.
+- Dashboard page: served from `panel/index.html`; nothing is copied into projects.
 
 ## Security and privacy
 

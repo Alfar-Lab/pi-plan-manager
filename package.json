@@ -38,7 +38,6 @@
     "README.md",
     "LICENSE",
     "bin",
-    "templates/task.html",
     "panel"
   ],
   "engines": {

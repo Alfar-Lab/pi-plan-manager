@@ -1,12 +1,15 @@
 /**
- * Project Plan Manager panel — view layer.
+ * Project Plan Manager — view layer, shared by the pi-web panel and the CLI
+ * standalone dashboard (`ppm dashboard_serve`).
  *
- * Adapted from `templates/task.html` (the CLI's standalone dashboard) so the
- * pi-web panel keeps the original design. The differences from that file:
- *   - data comes from `./ppm-data.js` (pi-web file API) instead of `/api/tasks`
- *   - Execute/Audit insert the prompt into pi-web's chat composer
- *   - Open plan.md opens the file in pi-web's right panel
- *   - the workspace comes from pi-web's panel context (?cwd= / pi-web:context)
+ * This is the single source of truth for the dashboard UI. The two entry
+ * points differ only in how they supply data and where action prompts go:
+ *   - pi-web panel: `panel/index.html` loads `./ppm-data.js` (pi-web file API)
+ *     and posts `pi-web:insert-prompt` / `pi-web:open-file` to the host.
+ *   - CLI dashboard: `panel/index.html` via `ppm dashboard_serve`, which serves
+ *     a thin `/ppm-data.js` shim over `/api/tasks` and falls back to clipboard
+ *     copy + the on-page modal.
+ * Set `window.PpmStandalone` and `window.PpmData` before loading this file.
  */
 (function () {
   "use strict";
@@ -193,13 +196,20 @@
     var section = function (label, body) {
       return '<section class="mt-2"><div class="text-[#6d7889] text-[10.5px] font-semibold tracking-wide">' + label + '</div><div class="text-[12px] sm:text-[13px] text-[#b7c0cc] leading-snug mt-1 whitespace-pre-wrap break-words">' + esc(body) + "</div></section>";
     };
-    return '<div class="task-body pt-2 pl-[1px]">' + meta + section("Detail", task.detail) + ProgressSection(task.progress) + "</div>";
+    var d = task.details || {};
+    var detailText = [
+      d.goal ? "Goal: " + d.goal : "",
+      d.contract ? "Contract: " + d.contract : "",
+      Array.isArray(d.steps) && d.steps.length ? "Steps:\n" + d.steps.map(function(s, i) { return (i + 1) + ". " + s; }).join("\n") : "",
+      d.verify ? "Verify: " + d.verify : ""
+    ].filter(Boolean).join("\n\n");
+    return '<div class="task-body pt-2 pl-[1px]">' + meta + section("Detail", detailText) + ProgressSection(task.progress) + "</div>";
   }
-  function ProgressSection(text) {
-    var entries = progressEntries(text);
+  function ProgressSection(progress) {
+    var entries = Array.isArray(progress) ? progress : [];
     if (!entries.length) return "";
     var items = entries.map(function (entry) {
-      return '<li class="pl-0.5">' + (entry.stamp ? '<div class="' + META + ' break-all">[' + esc(entry.stamp) + "]</div>" : "") + '<div class="text-[12px] sm:text-[13px] text-[#b7c0cc] leading-snug whitespace-pre-wrap break-words">' + esc(entry.text) + "</div></li>";
+      return '<li class="pl-0.5">' + (entry.time ? '<div class="' + META + ' break-all">[' + esc(entry.time) + "]</div>" : "") + '<div class="text-[12px] sm:text-[13px] text-[#b7c0cc] leading-snug whitespace-pre-wrap break-words">' + esc(entry.detail) + "</div></li>";
     }).join("");
     return '<section class="mt-2"><div class="text-[#6d7889] text-[10.5px] font-semibold tracking-wide">Progress</div><ul class="mt-1 list-disc pl-4 space-y-1.5 marker:text-[#3d4757]">' + items + "</ul></section>";
   }
@@ -220,7 +230,10 @@
     return '<div class="flex flex-wrap gap-2 items-center my-2">' + Button({ label: "Execute Phase", className: BUTTON_PRIMARY, dataset: { prompt: PhaseExecPrompt(plan.name, phase.name) } }) + Button({ label: "Audit Phase", dataset: { prompt: PhaseAuditPrompt(plan.name, phase.name) } }) + "</div>";
   }
   function matches(task, query) {
-    return [task.id, task.title, task.detail, task.progress, task.status, task.agent].concat(list(task.files))
+    var d = task.details || {};
+    var stepText = Array.isArray(d.steps) ? d.steps.join(" ") : "";
+    var progText = Array.isArray(task.progress) ? task.progress.map(function(p) { return p.detail; }).join(" ") : "";
+    return [task.id, task.title, d.goal, d.contract, stepText, d.verify, progText, task.status, task.agent].concat(list(task.files))
       .some(function (value) { return String(value || "").toLowerCase().includes(query); });
   }
   function PhaseSection(options) {
@@ -307,7 +320,7 @@
 
   var loading = false;
   async function load() {
-    if (!state.cwd) {
+    if (!state.cwd && !window.PpmStandalone) {
       document.querySelector("#content").innerHTML = '<div class="text-[#8996a8] text-sm border border-dashed border-[#232b38] rounded-lg p-6 text-center">Waiting for a workspace…</div>';
       return;
     }

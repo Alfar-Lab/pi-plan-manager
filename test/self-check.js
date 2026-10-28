@@ -77,12 +77,16 @@ async function main() {
 	// Progress appends with timestamps; --replace overwrites; values may start with "--".
 	ok("task_write_progress", ...p0, "--task-id", "C", "--progress-text", "first");
 	ok("task_write_progress", ...p0, "--task-id", "C", "--progress-text", "--second");
-	const progress = readTasks("phase_0").find((t) => t.id === "C").progress.split("\n");
+	const progress = readTasks("phase_0").find((t) => t.id === "C").progress;
 	assert.equal(progress.length, 2);
-	assert.match(progress[0], /^\[\d{4}-\d\d-\d\dT[\d:]+Z\] first$/);
-	assert.match(progress[1], /\] --second$/);
+	assert.match(progress[0].detail, /^first$/);
+	assert.match(progress[0].time, /^\d{4}-\d\d-\d\dT[\d:]+Z$/);
+	assert.match(progress[1].detail, /^--second$/);
+	assert.match(progress[1].time, /^\d{4}-\d\d-\d\dT[\d:]+Z$/);
 	ok("task_write_progress", ...p0, "--task-id", "C", "--progress-text", "only", "--replace");
-	assert.equal(readTasks("phase_0").find((t) => t.id === "C").progress, "only");
+	const replaced = readTasks("phase_0").find((t) => t.id === "C").progress;
+	assert.equal(replaced.length, 1);
+	assert.equal(replaced[0].detail, "only");
 
 	// plan_status reports current phase.
 	assert.equal(ok("plan_status", "--plan", "demo"), "phase_0 phase_0: 2/3 done\nphase_1 phase_1: 0/1 done\nCurrent: phase_0\n");
@@ -95,7 +99,8 @@ async function main() {
 	// Legacy fail_desc is folded into progress, not dropped.
 	writePhase("phase_1", [task("D", { status: "fail", fail_desc: "boom" })]);
 	ok("task_write_progress", ...p1, "--task-id", "D", "--progress-text", "retry");
-	assert.match(readTasks("phase_1")[0].progress, /\[legacy fail_desc\] boom\n\[.*\] retry/);
+	assert.equal(readTasks("phase_1")[0].progress[0].detail, "[legacy fail_desc] boom");
+	assert.match(readTasks("phase_1")[0].progress[1].detail, /retry/);
 	assert.equal("fail_desc" in readTasks("phase_1")[0], false);
 
 	// Pure analysis: glob overlap, waves, critical path.
@@ -147,7 +152,7 @@ async function main() {
 		const child = spawn(process.execPath, [CLI, "task_write_progress", ...p1, "--task-id", id, "--progress-text", `done ${id}`, "--project", project], { env });
 		child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`writer ${id} exited ${code}`))));
 	})));
-	for (const t of readTasks("phase_1")) assert.match(t.progress, new RegExp(`done ${t.id}$`), `lost update for ${t.id}`);
+	for (const t of readTasks("phase_1")) assert.match(t.progress[t.progress.length - 1].detail, new RegExp(`done ${t.id}$`), `lost update for ${t.id}`);
 	assert.equal(fs.readdirSync(tasksDir).some((name) => name.endsWith(".lock")), false, "stale lock left behind");
 
 	// Empty phase is an error (would otherwise read as complete).

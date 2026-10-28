@@ -22,10 +22,10 @@ Keep this output as the baseline. Record the completed count per phase.
 | Scope | Rule |
 |---|---|
 | Phase whose tasks are all `completed` | Frozen. Do not edit, rename, or delete the file. |
-| `completed` task in an unfinished phase | Frozen: keep `id`, `title`, `detail`, `status`, `progress` byte-for-byte. It may be listed in `pre_request` of new tasks. Adding `files`/`agent` is not required. |
-| `todo` / `fail` task in a started phase | Rework freely: split, merge, rewrite `detail` as a context packet, add `files` and `agent`, rewire `pre_request`, add a closing `verify`/`review` task. |
+| `completed` task in an unfinished phase | Frozen: keep `id`, `title`, `status`, `progress` byte-for-byte. The `detail` field is reinterpretted as a context packet (`details.goal`, `details.contract`, `details.steps`, `details.verify`). It may be listed in `pre_request` of new tasks. Adding `files`/`agent` is not required. |
+| `todo` / `fail` task in a started phase | Rework freely: split, merge, rewrite `detail` as a context packet (`details` object with `goal`, `contract`, `steps`, `verify`), add `files` and `agent`, rewire `pre_request`, add a closing `verify`/`review` task. |
 | Phase with no `completed` task | Rework fully: tasks, order, merge or split phases. |
-| `fail` task being replaced | Carry its `progress` (failure evidence, including any `[legacy fail_desc]` line) into the successor task's `detail` under a `Prior attempt:` line. |
+| `fail` task being replaced | Carry its `progress` (failure evidence) into the successor task's `details` under a `Prior attempt:` line. The `progress` array entries `{ time, detail }` are preserved byte-for-byte. |
 
 Phase files stay `phase_<n>.json` with `phase` equal to the filename. Frozen phases keep their names; reworked phases may be renumbered after the last frozen one. Delete a phase file only when all its tasks were moved elsewhere.
 

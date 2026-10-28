@@ -157,8 +157,12 @@ function taskWriteProgressHandler(options) {
 	const text = options["progress-text"].trim();
 	mutatePhase(options, (phase) => {
 		const task = getTask(phase, options["task-id"]);
-		const entry = `[${timestamp()}] ${text}`;
-		task.progress = options.replace ? text : [task.progress.trim(), entry].filter(Boolean).join("\n");
+		const entry = { time: timestamp(), detail: text };
+		if (options.replace) {
+			task.progress = [entry];
+		} else {
+			task.progress.push(entry);
+		}
 	});
 	process.stdout.write(`${options["task-id"]}: progress ${options.replace ? "replaced" : "appended"}\n`);
 }
@@ -167,7 +171,7 @@ const afterNote = (task) => (depsOf(task).length ? ` (after ${depsOf(task).join(
 
 function taskListHandler(options) {
 	const { phase } = loadPhase(options);
-	const lines = phase.tasks.map((task) => `${task.id} [${task.status}] ${task.title}${afterNote(task)}${task.status === "todo" && task.progress.trim() ? " +progress" : ""}`);
+	const lines = phase.tasks.map((task) => `${task.id} [${task.status}] ${task.title}${afterNote(task)}${task.status === "todo" && task.progress.length ? " +progress" : ""}`);
 	process.stdout.write(lines.length ? `${lines.join("\n")}\n` : "No tasks.\n");
 }
 
@@ -220,8 +224,18 @@ function taskGetHandler(options) {
 	if (depsOf(task).length) meta.push(`After: ${depsOf(task).join(", ")}`);
 	if (task.agent) meta.push(`Agent: ${task.agent}`);
 	if (Array.isArray(task.files) && task.files.length) meta.push(`Files: ${task.files.join(", ")}`);
-	const blocks = [`${task.id} [${statusLabel(task, phase)}] ${task.title}`, meta.join(" | "), `## Detail\n${task.detail}`];
-	if (task.progress.trim()) blocks.push(`## Progress\n${task.progress.trim()}`);
+	const d = task.details || {};
+	const detailText = [
+		d.goal ? `Goal: ${d.goal}` : "",
+		d.contract ? `Contract: ${d.contract}` : "",
+		d.steps?.length ? `Steps:\n${d.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}` : "",
+		d.verify ? `Verify: ${d.verify}` : "",
+	].filter(Boolean).join("\n\n");
+	const blocks = [`${task.id} [${statusLabel(task, phase)}] ${task.title}`, meta.join(" | "), `## Detail\n${detailText}`];
+	if (task.progress.length) {
+		const progText = task.progress.map((p) => `[${p.time}] ${p.detail}`).join("\n");
+		blocks.push(`## Progress\n${progText}`);
+	}
 	process.stdout.write(`${blocks.join("\n")}\n`);
 }
 

@@ -68,6 +68,60 @@ function projectRoot(options) {
 	return fs.realpathSync(candidate);
 }
 
+function normalizeDetails(task) {
+	if (task.details && typeof task.details === "object" && !Array.isArray(task.details)) {
+		if (typeof task.details.goal !== "string") task.details.goal = String(task.details.goal || "");
+		if (typeof task.details.contract !== "string") task.details.contract = String(task.details.contract || "");
+		if (!Array.isArray(task.details.steps)) {
+			task.details.steps = typeof task.details.steps === "string" ? [task.details.steps] : [];
+		} else {
+			task.details.steps = task.details.steps.map((s) => String(s || ""));
+		}
+		if (typeof task.details.verify !== "string") task.details.verify = String(task.details.verify || "");
+		return;
+	}
+	const str = typeof task.detail === "string" ? task.detail : "";
+	const goalMatch = /Goal:\s*([\s\S]*?)(?=Contract:|Steps:|Verify:|Done when:|$)/i.exec(str);
+	const contractMatch = /Contract:\s*([\s\S]*?)(?=Goal:|Steps:|Verify:|Done when:|$)/i.exec(str);
+	const stepsMatch = /Steps:\s*([\s\S]*?)(?=Goal:|Contract:|Verify:|Done when:|$)/i.exec(str);
+	const verifyMatch = /Verify:\s*([\s\S]*?)(?=Goal:|Contract:|Steps:|Done when:|$)/i.exec(str);
+
+	const stepsStr = stepsMatch ? stepsMatch[1].trim() : "";
+	const steps = stepsStr ? stepsStr.split("\n").map((s) => s.replace(/^[-*\d.\s]+/, "").trim()).filter(Boolean) : [];
+
+	task.details = {
+		goal: goalMatch ? goalMatch[1].trim() : str,
+		contract: contractMatch ? contractMatch[1].trim() : "",
+		steps,
+		verify: verifyMatch ? verifyMatch[1].trim() : "",
+	};
+	delete task.detail;
+}
+
+const TIMESTAMP_REGEX = /^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]\s?/;
+
+function normalizeProgress(task) {
+	if (Array.isArray(task.progress)) {
+		task.progress = task.progress.map((item) => {
+			if (item && typeof item === "object") return { time: String(item.time || ""), detail: String(item.detail || "") };
+			return { time: "", detail: String(item || "") };
+		});
+		return;
+	}
+	if (typeof task.progress === "string" && task.progress.trim()) {
+		const entries = [];
+		task.progress.split("\n").forEach((line) => {
+			const match = line.match(TIMESTAMP_REGEX);
+			if (match) entries.push({ time: match[1], detail: line.slice(match[0].length) });
+			else if (entries.length) entries[entries.length - 1].detail += `\n${line}`;
+			else entries.push({ time: "", detail: line });
+		});
+		task.progress = entries;
+		return;
+	}
+	task.progress = [];
+}
+
 function readPhase(taskFile, expectedPhase) {
 	let content;
 	try { content = fs.readFileSync(taskFile, "utf8"); } catch (error) {
@@ -76,18 +130,21 @@ function readPhase(taskFile, expectedPhase) {
 	}
 	let phase;
 	try { phase = JSON.parse(content); } catch (error) { throw new Error(`invalid JSON in ${taskFile}: ${error.message}`); }
-	// Legacy normalization. fail_desc is folded into progress (not dropped) so no failure context is lost.
+	// Normalization. fail_desc is folded into progress so no failure context is lost.
 	if (Array.isArray(phase?.tasks)) {
 		for (const task of phase.tasks) {
 			if (!task || typeof task !== "object") continue;
-			if (task.progress === undefined) task.progress = "";
 			if (task.status === "start") task.status = "todo";
 			if ("fail_desc" in task) {
 				const legacy = typeof task.fail_desc === "string" ? task.fail_desc.trim() : "";
-				if (legacy && typeof task.progress === "string" && !task.progress.includes(legacy))
-					task.progress = [task.progress.trim(), `[legacy fail_desc] ${legacy}`].filter(Boolean).join("\n");
+				if (legacy) {
+					if (!Array.isArray(task.progress)) normalizeProgress(task);
+					task.progress.push({ time: "", detail: `[legacy fail_desc] ${legacy}` });
+				}
 				delete task.fail_desc;
 			}
+			normalizeDetails(task);
+			normalizeProgress(task);
 		}
 	}
 	validatePhase(phase, expectedPhase);
@@ -159,11 +216,17 @@ function validatePhase(phase, expectedPhase) {
 	phase.tasks.forEach((task, index) => {
 		const label = `tasks[${index}]`;
 		if (!task || typeof task !== "object" || Array.isArray(task)) throw new Error(`${label} must be an object`);
-		for (const field of ["id", "title", "detail", "status"]) if (typeof task[field] !== "string" || !task[field].trim()) throw new Error(`${label}.${field} must be a non-empty string`);
+		for (const field of ["id", "title", "status"]) if (typeof task[field] !== "string" || !task[field].trim()) throw new Error(`${label}.${field} must be a non-empty string`);
 		if (ids.has(task.id)) throw new Error(`duplicate task id: ${task.id}`);
 		ids.add(task.id);
 		if (!VALID_STATUSES.has(task.status)) throw new Error(`${label}.status is invalid: ${task.status}`);
-		if (typeof task.progress !== "string") throw new Error(`${label}.progress must be a string`);
+		if (!task.details || typeof task.details !== "object" || Array.isArray(task.details)) throw new Error(`${label}.details must be an object`);
+		if (typeof task.details.goal !== "string") throw new Error(`${label}.details.goal must be a string`);
+		if (!Array.isArray(task.details.steps)) throw new Error(`${label}.details.steps must be an array of strings`);
+		if (!Array.isArray(task.progress)) throw new Error(`${label}.progress must be an array`);
+		for (const p of task.progress) {
+			if (!p || typeof p !== "object" || typeof p.detail !== "string") throw new Error(`${label}.progress entries must be objects with detail string`);
+		}
 		validateFiles(task, index);
 		validateAgent(task, index);
 	});
@@ -179,6 +242,8 @@ module.exports = {
 	phaseNumber,
 	listPhaseNames,
 	withFileLock,
+	normalizeDetails,
+	normalizeProgress,
 	PLAN_PATTERN,
 	PHASE_PATTERN,
 };

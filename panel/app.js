@@ -265,8 +265,12 @@
   function PlanAuditPrompt(planName) {
     return "Audit " + planName + " using Project-Plan-Manager skill";
   }
+  function PlanReformatPrompt(planName) {
+    return "Run `ppm migrate_format --plan " + planName + "` to automatically migrate tasks to the new JSON contract format";
+  }
   function PlanActions(plan) {
-    return '<div class="flex flex-wrap gap-2 items-center my-2.5 sm:my-3">' + Button({ label: "Execute Plan", className: BUTTON_PRIMARY, dataset: { prompt: PlanExecPrompt(plan.name) } }) + Button({ label: "Audit Plan", dataset: { prompt: PlanAuditPrompt(plan.name) } }) + Button({ label: "Open plan.md", dataset: { plan: plan.name, path: plan.filePath || "" } }) + "</div>";
+    var reformat = plan.hasOldFormat ? Button({ label: "Reformat Plan", dataset: { prompt: PlanReformatPrompt(plan.name) } }) : "";
+    return '<div class="flex flex-wrap gap-2 items-center my-2.5 sm:my-3">' + Button({ label: "Execute Plan", className: BUTTON_PRIMARY, dataset: { prompt: PlanExecPrompt(plan.name) } }) + Button({ label: "Audit Plan", dataset: { prompt: PlanAuditPrompt(plan.name) } }) + reformat + Button({ label: "Open plan.md", dataset: { plan: plan.name, path: plan.filePath || "" } }) + "</div>";
   }
   function PlanHeading(plan, percent) {
     return '<span class="flex flex-col gap-0.5 min-w-0 mr-auto"><span class="text-[14px] sm:text-[15px] font-semibold ' + titleClass(percent) + ' truncate">' + esc(plan.name) + '</span><span class="text-[#6d7889] text-[10.5px] sm:text-[11.5px] font-normal font-mono">created ' + esc(plan.createdAt || "—") + " · updated " + esc(plan.lastUpdated || "—") + "</span></span>";

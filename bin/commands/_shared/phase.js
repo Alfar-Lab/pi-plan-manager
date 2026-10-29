@@ -77,25 +77,49 @@ function normalizeDetails(task) {
 		} else {
 			task.details.steps = task.details.steps.map((s) => String(s || ""));
 		}
+		task.details.steps = splitSteps(task.details.steps);
 		if (typeof task.details.verify !== "string") task.details.verify = String(task.details.verify || "");
 		return;
 	}
-	const str = typeof task.detail === "string" ? task.detail : "";
-	const goalMatch = /Goal:\s*([\s\S]*?)(?=Contract:|Steps:|Verify:|Done when:|$)/i.exec(str);
-	const contractMatch = /Contract:\s*([\s\S]*?)(?=Goal:|Steps:|Verify:|Done when:|$)/i.exec(str);
-	const stepsMatch = /Steps:\s*([\s\S]*?)(?=Goal:|Contract:|Verify:|Done when:|$)/i.exec(str);
-	const verifyMatch = /Verify:\s*([\s\S]*?)(?=Goal:|Contract:|Steps:|Done when:|$)/i.exec(str);
-
-	const stepsStr = stepsMatch ? stepsMatch[1].trim() : "";
-	const steps = stepsStr ? stepsStr.split("\n").map((s) => s.replace(/^[-*\d.\s]+/, "").trim()).filter(Boolean) : [];
-
-	task.details = {
-		goal: goalMatch ? goalMatch[1].trim() : str,
-		contract: contractMatch ? contractMatch[1].trim() : "",
-		steps,
-		verify: verifyMatch ? verifyMatch[1].trim() : "",
-	};
+	task.details = parseLegacyDetail(typeof task.detail === "string" ? task.detail : "");
 	delete task.detail;
+}
+
+// Legacy `detail` string -> details object, losslessly. Labels count only at line start, so inline
+// mentions ("... Contract: POST ...") stay in their section. Text before the first label and any
+// "Files:" block stay in goal; "Done when:" is appended to verify.
+const DETAIL_LABEL = /^[ \t]*(Goal|Contract|Steps|Verify|Done when):[ \t]*/gim;
+
+function parseLegacyDetail(str) {
+	const marks = [...str.matchAll(DETAIL_LABEL)];
+	const sections = { goal: [str.slice(0, marks.length ? marks[0].index : str.length)], contract: [], steps: [], verify: [], "done when": [] };
+	marks.forEach((mark, i) => sections[mark[1].toLowerCase()].push(str.slice(mark.index + mark[0].length, i + 1 < marks.length ? marks[i + 1].index : str.length)));
+	const text = (key) => sections[key].map((s) => s.trim()).filter(Boolean).join("\n");
+	const doneWhen = text("done when");
+	return {
+		goal: text("goal"),
+		contract: text("contract"),
+		steps: splitSteps(text("steps").split("\n").map((s) => s.replace(/^\s*(?:[-*]|\d+[.)])\s+/, "").trim()).filter(Boolean)),
+		verify: [text("verify"), doneWhen && `Done when: ${doneWhen}`].filter(Boolean).join("\n"),
+	};
+}
+
+// A lone step packing several actions ("a; b; c") becomes one step per action. ";" inside
+// `code` or (), [], {} is kept. Multi-step lists are left alone.
+function splitSteps(steps) {
+	if (steps.length !== 1) return steps;
+	const parts = [];
+	let current = "", tick = false, depth = 0;
+	for (const ch of steps[0]) {
+		if (ch === "`") tick = !tick;
+		else if (!tick && "([{".includes(ch)) depth += 1;
+		else if (!tick && ")]}".includes(ch) && depth) depth -= 1;
+		if (ch === ";" && !tick && !depth) { parts.push(current); current = ""; continue; }
+		current += ch;
+	}
+	parts.push(current);
+	const out = parts.map((part) => part.trim()).filter(Boolean);
+	return out.length > 1 ? out : steps;
 }
 
 const TIMESTAMP_REGEX = /^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]\s?/;
@@ -122,7 +146,9 @@ function normalizeProgress(task) {
 	task.progress = [];
 }
 
-function readPhase(taskFile, expectedPhase) {
+// Parse + normalize + validate. legacyTasks = tasks whose JSON normalization changed, i.e. what
+// `ppm migrate_format` would rewrite (the dashboard shows "Reformat Plan" when > 0).
+function readPhaseFile(taskFile, expectedPhase) {
 	let content;
 	try { content = fs.readFileSync(taskFile, "utf8"); } catch (error) {
 		if (error.code === "ENOENT") throw new Error(`task file not found: ${taskFile}`);
@@ -130,6 +156,7 @@ function readPhase(taskFile, expectedPhase) {
 	}
 	let phase;
 	try { phase = JSON.parse(content); } catch (error) { throw new Error(`invalid JSON in ${taskFile}: ${error.message}`); }
+	const before = Array.isArray(phase?.tasks) ? phase.tasks.map((task) => JSON.stringify(task)) : [];
 	// Normalization. fail_desc is folded into progress so no failure context is lost.
 	if (Array.isArray(phase?.tasks)) {
 		for (const task of phase.tasks) {
@@ -148,7 +175,19 @@ function readPhase(taskFile, expectedPhase) {
 		}
 	}
 	validatePhase(phase, expectedPhase);
-	return phase;
+	return { phase, legacyTasks: phase.tasks.filter((task, i) => JSON.stringify(task) !== before[i]).length };
+}
+
+function readPhase(taskFile, expectedPhase) {
+	return readPhaseFile(taskFile, expectedPhase).phase;
+}
+
+function writePhase(taskFile, phase) {
+	const temporaryFile = `${taskFile}.${process.pid}.tmp`;
+	try {
+		fs.writeFileSync(temporaryFile, `${JSON.stringify(phase, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+		fs.renameSync(temporaryFile, taskFile);
+	} finally { if (fs.existsSync(temporaryFile)) fs.unlinkSync(temporaryFile); }
 }
 
 function validatePreRequest(task, index, ids) {
@@ -238,12 +277,16 @@ module.exports = {
 	assertSafeSegment,
 	projectRoot,
 	readPhase,
+	readPhaseFile,
+	writePhase,
 	validatePhase,
 	phaseNumber,
 	listPhaseNames,
 	withFileLock,
 	normalizeDetails,
 	normalizeProgress,
+	parseLegacyDetail,
+	splitSteps,
 	PLAN_PATTERN,
 	PHASE_PATTERN,
 };

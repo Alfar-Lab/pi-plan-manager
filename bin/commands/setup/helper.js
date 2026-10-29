@@ -6,8 +6,9 @@ const os = require("node:os");
 const path = require("node:path");
 const { URL } = require("node:url");
 
-const { PLAN_PATTERN, assertSafeSegment, projectRoot, readPhase, listPhaseNames } = require("../_shared/phase");
+const { PLAN_PATTERN, assertSafeSegment, projectRoot, readPhaseFile, listPhaseNames } = require("../_shared/phase");
 const { lintPhase, waves, criticalPath } = require("../_shared/analysis");
+const { migrateFormat } = require("./format");
 
 const CONFIG_DIR = path.join(os.homedir(), ".config", "project-plan-manager");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
@@ -124,11 +125,14 @@ function readPlanData(plansRoot, name) {
 	let content = "";
 	try { content = fs.readFileSync(path.join(planRoot, "plan.md"), "utf8"); } catch (error) { if (error.code !== "ENOENT") errors.push(`plan.md: ${error.message}`); }
 	let phases = [];
+	let legacyTasks = 0;
 	try {
 		phases = listPhaseNames(planRoot).flatMap((phaseName) => {
 			const filePath = path.join(planRoot, "tasks", `${phaseName}.json`);
 			try {
-				const phase = readPhase(filePath, phaseName);
+				const read = readPhaseFile(filePath, phaseName);
+				const phase = read.phase;
+				legacyTasks += read.legacyTasks;
 				// Same analysis as plan_validate / plan_waves so the UI never looks healthier than the CLI says.
 				const lint = lintPhase(phase);
 				const wave = {};
@@ -149,7 +153,7 @@ function readPlanData(plansRoot, name) {
 			}
 		});
 	} catch (error) { errors.push(`tasks: ${error.message}`); }
-	return { name, content, ...planMetadata(content), phases, errors };
+	return { name, content, ...planMetadata(content), phases, errors, legacyTasks };
 }
 
 function readProjectData(project) {
@@ -182,6 +186,19 @@ function dashboardResponse(response, status, body, contentType) {
 	response.end(body);
 }
 
+// Standalone replacement for panel/ppm-data.js: same window.PpmData interface, backed by this server.
+const STANDALONE_DATA_JS = `window.PpmStandalone = true;
+window.PpmData = {
+	loadDashboard: async () => (await fetch("/api/tasks", { cache: "no-store" })).json(),
+	migrateFormat: async (projectPath, plan) => {
+		const response = await fetch("/api/migrate_format?project=" + encodeURIComponent(projectPath) + "&plan=" + encodeURIComponent(plan), { method: "POST", headers: { "X-PPM-Action": "1" } });
+		const body = await response.json();
+		if (!response.ok) throw new Error(body.error || "HTTP " + response.status);
+		return body;
+	},
+};
+`;
+
 function dashboardServeHandler(options) {
 	const htmlPath = path.resolve(__dirname, "../../../panel/index.html");
 	const port = options.port === undefined ? 4173 : Number(options.port);
@@ -189,12 +206,22 @@ function dashboardServeHandler(options) {
 	const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 	const server = http.createServer((request, response) => {
 		if (!allowedHosts.has(String(request.headers.host || "").toLowerCase())) return dashboardResponse(response, 403, JSON.stringify({ error: "Forbidden host" }), "application/json; charset=utf-8");
-		if (request.method !== "GET") return dashboardResponse(response, 405, JSON.stringify({ error: "Method not allowed" }), "application/json; charset=utf-8");
-		const route = new URL(request.url, "http://127.0.0.1").pathname;
+		const url = new URL(request.url, "http://127.0.0.1");
+		const route = url.pathname;
+		const json = (status, body) => dashboardResponse(response, status, JSON.stringify(body), "application/json; charset=utf-8");
+		if (request.method === "POST" && route === "/api/migrate_format") {
+			// CSRF guard: the custom header forces a CORS preflight, which this server never approves.
+			if (request.headers["x-ppm-action"] !== "1" || request.headers["sec-fetch-site"] === "cross-site") return json(403, { error: "Forbidden" });
+			// Only registered/served projects; never an arbitrary path from the request.
+			const project = dashboardProjects(options).find((entry) => entry.path === url.searchParams.get("project"));
+			if (!project) return json(404, { error: "project not found" });
+			try { return json(200, migrateFormat({ project: project.path, plan: url.searchParams.get("plan") || "" })); } catch (error) { return json(400, { error: error.message }); }
+		}
+		if (request.method !== "GET") return json(405, { error: "Method not allowed" });
 		try {
 			if (route === "/api/tasks") return dashboardResponse(response, 200, JSON.stringify(readDashboardData(options)), "application/json; charset=utf-8");
 			if (route === "/" || route === "/index.html" || route === "/task.html") return dashboardResponse(response, 200, fs.readFileSync(htmlPath), "text/html; charset=utf-8");
-			if (route === "/ppm-data.js") return dashboardResponse(response, 200, 'window.PpmData = { loadDashboard: async () => (await fetch("/api/tasks", { cache: "no-store" })).json() };', "application/javascript; charset=utf-8");
+			if (route === "/ppm-data.js") return dashboardResponse(response, 200, STANDALONE_DATA_JS, "application/javascript; charset=utf-8");
 			if (route === "/app.js") return dashboardResponse(response, 200, fs.readFileSync(path.resolve(__dirname, "../../../panel/app.js")), "application/javascript; charset=utf-8");
 			if (route === "/tailwind.js") return dashboardResponse(response, 200, fs.readFileSync(path.resolve(__dirname, "../../../panel/tailwind.js")), "application/javascript; charset=utf-8");
 			return dashboardResponse(response, 404, JSON.stringify({ error: "Not found" }), "application/json; charset=utf-8");

@@ -9,6 +9,7 @@ const {
 	assertSafeSegment,
 	projectRoot,
 	readPhase,
+	writePhase,
 	validatePhase,
 	listPhaseNames,
 	withFileLock,
@@ -58,14 +59,6 @@ function blockedTasks(phase) {
 	return phase.tasks
 		.filter((task) => task.status === "todo" && unmetDeps(task, statusById).length)
 		.map((task) => ({ id: task.id, title: task.title, waiting: unmetDeps(task, statusById) }));
-}
-
-function writePhase(taskFile, phase) {
-	const temporaryFile = `${taskFile}.${process.pid}.tmp`;
-	try {
-		fs.writeFileSync(temporaryFile, `${JSON.stringify(phase, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-		fs.renameSync(temporaryFile, taskFile);
-	} finally { if (fs.existsSync(temporaryFile)) fs.unlinkSync(temporaryFile); }
 }
 
 function loadPhase(options) {

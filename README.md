@@ -34,7 +34,8 @@ cd project-plan-manager
 ./install.sh                     # OpenCode (default), copy mode
 ./install.sh --client claude     # Claude Code
 ./install.sh --client codex      # Codex
-./install.sh --client all        # all three
+./install.sh --client pi         # Pi
+./install.sh --client all        # all four
 ./install.sh --mode link         # symlink this checkout instead of copying (for development)
 ./install.sh --uninstall         # remove the skill; add --client to target one client
 ```
@@ -131,6 +132,7 @@ Run from a project root, or add `--project <path>` to any command. `ppm` with no
 ppm init [--plan <name>] [--project <path>]
 ppm plan_init --plan <name> [--project <path>]        # alias of init --plan
 ppm migrate [--project <path>] [--dry-run]            # legacy docs/plans/ -> .ppm/
+ppm migrate_format --plan <name> [--dry-run] [--project <path>]  # legacy task JSON (detail/progress strings, fail_desc) -> current format; backs up tasks/ first
 ppm clean_roots [--dry-run]                           # drop dead project registrations
 ppm dashboard_serve [--project <path>] [--port <port>]
 ppm check_dashboard [--port <port>]

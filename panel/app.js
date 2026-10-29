@@ -265,11 +265,9 @@
   function PlanAuditPrompt(planName) {
     return "Audit " + planName + " using Project-Plan-Manager skill";
   }
-  function PlanReformatPrompt(planName) {
-    return "Run `ppm migrate_format --plan " + planName + "` to automatically migrate tasks to the new JSON contract format";
-  }
   function PlanActions(plan) {
-    var reformat = plan.hasOldFormat ? Button({ label: "Reformat Plan", dataset: { prompt: PlanReformatPrompt(plan.name) } }) : "";
+    var armed = state.armed && state.armed.plan === plan.name && state.armed.until > Date.now();
+    var reformat = plan.legacyTasks ? Button({ label: armed ? "Click again to rewrite " + plan.legacyTasks + " task(s)" : "Reformat Plan (" + plan.legacyTasks + ")", className: armed ? BUTTON_PRIMARY : BUTTON, dataset: { reformat: plan.name } }) : "";
     return '<div class="flex flex-wrap gap-2 items-center my-2.5 sm:my-3">' + Button({ label: "Execute Plan", className: BUTTON_PRIMARY, dataset: { prompt: PlanExecPrompt(plan.name) } }) + Button({ label: "Audit Plan", dataset: { prompt: PlanAuditPrompt(plan.name) } }) + reformat + Button({ label: "Open plan.md", dataset: { plan: plan.name, path: plan.filePath || "" } }) + "</div>";
   }
   function PlanHeading(plan, percent) {
@@ -319,7 +317,8 @@
       .map(function (entry) { return Plan({ plan: entry.plan, planStats: entry.planStats, projectId: project.id, query: query }); })
       .filter(Boolean)
       .join("");
-    document.querySelector("#content").innerHTML = plans || '<div class="text-[#8996a8] text-sm border border-dashed border-[#232b38] rounded-lg p-6 text-center">No plans found.</div>';
+    var notice = state.notice ? '<p class="' + (state.notice.kind === "error" ? "text-rose-300 border-rose-900/50 bg-rose-950/30" : "text-teal-200 border-teal-900/50 bg-teal-950/30") + ' text-xs sm:text-sm font-mono border rounded-lg p-2.5 break-words" role="status">' + esc(state.notice.text) + "</p>" : "";
+    document.querySelector("#content").innerHTML = notice + (plans || '<div class="text-[#8996a8] text-sm border border-dashed border-[#232b38] rounded-lg p-6 text-center">No plans found.</div>');
   }
 
   var loading = false;
@@ -340,6 +339,28 @@
     }
   }
 
+  // Runs migrate_format in code (no LLM): standalone via POST /api/migrate_format, pi-web via its file API.
+  // Two-click confirm on the button itself: sandboxed panel iframes may block window.confirm/alert.
+  async function reformatPlan(button) {
+    var plan = button.dataset.reformat;
+    if (!(state.armed && state.armed.plan === plan && state.armed.until > Date.now())) {
+      state.armed = { plan: plan, until: Date.now() + 5000 };
+      render();
+      setTimeout(render, 5100);
+      return;
+    }
+    state.armed = null;
+    button.disabled = true;
+    button.textContent = "Reformatting…";
+    try {
+      var result = await window.PpmData.migrateFormat(state.project, plan);
+      state.notice = { kind: "info", text: plan + ": migrated " + result.tasks + " task(s) in " + result.phases.length + " phase file(s)." + (result.backup ? " Backup: " + result.backup : "") };
+    } catch (error) {
+      state.notice = { kind: "error", text: plan + ": reformat failed: " + error.message };
+    }
+    await load();
+  }
+
   // ============== host context ==============
   window.addEventListener("message", function (event) {
     var data = event.data;
@@ -357,6 +378,8 @@
   document.querySelector("#search").addEventListener("input", function (event) { state.query = event.target.value; render(); });
   document.querySelector("#refresh").addEventListener("click", load);
   document.querySelector("#content").addEventListener("click", function (event) {
+    var reformatButton = event.target.closest("[data-reformat]");
+    if (reformatButton) { reformatPlan(reformatButton); return; }
     var promptButton = event.target.closest("[data-prompt]");
     if (promptButton) { dispatchPrompt(promptButton); return; }
     var openButton = event.target.closest("[data-plan]");

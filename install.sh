@@ -2,8 +2,8 @@
 # install.sh - install project-plan-manager skill and link the `ppm` CLI
 #
 # Usage:
-#   ./install.sh [--client opencode|claude|codex|all] [--mode copy|link]
-#   ./install.sh --uninstall [--client opencode|claude|codex|all]
+#   ./install.sh [--client opencode|claude|codex|pi|all] [--mode copy|link]
+#   ./install.sh --uninstall [--client opencode|claude|codex|pi|all]
 #
 # Modes:
 #   copy - copy skill files into the agent's skills directory (default, frozen install)
@@ -46,6 +46,7 @@ client_dir() {
 		opencode) echo "$HOME/.config/opencode/skills" ;;
 		claude) echo "$HOME/.claude/skills" ;;
 		codex) echo "$HOME/.agents/skills" ;;
+		pi) echo "$HOME/.pi/agent/skills" ;;
 		*) fail "unknown client: $1" ;;
 	esac
 }
@@ -55,14 +56,15 @@ clients() {
 		opencode) echo "opencode" ;;
 		claude) echo "claude" ;;
 		codex) echo "codex" ;;
-		all) echo "opencode claude codex" ;;
-		*) fail "unknown --client: $1 (expected opencode|claude|codex|all)" ;;
+		pi) echo "pi" ;;
+		all) echo "opencode claude codex pi" ;;
+		*) fail "unknown --client: $1 (expected opencode|claude|codex|pi|all)" ;;
 	esac
 }
 
 case "$MODE" in copy|link) ;; *) echo "unknown --mode: $MODE (expected copy|link)" >&2; exit 2 ;; esac
 # Validate here: clients() runs inside $(...), where its `fail` would only exit the subshell.
-case "$CLIENT" in opencode|claude|codex|all) ;; *) echo "unknown --client: $CLIENT (expected opencode|claude|codex|all)" >&2; exit 2 ;; esac
+case "$CLIENT" in opencode|claude|codex|pi|all) ;; *) echo "unknown --client: $CLIENT (expected opencode|claude|codex|pi|all)" >&2; exit 2 ;; esac
 
 # Absolute physical path, or empty when it does not exist.
 real_dir() { (cd "$1" 2>/dev/null && pwd -P) || true; }
@@ -99,7 +101,7 @@ copy_tree() {
 # First installed client dir, used as the single `npm link` source.
 first_installed() {
 	local c
-	for c in opencode claude codex; do
+	for c in opencode claude codex pi; do
 		if [[ -f "$(client_dir "$c")/$SKILL_NAME/package.json" ]]; then
 			echo "$(client_dir "$c")/$SKILL_NAME"
 			return 0

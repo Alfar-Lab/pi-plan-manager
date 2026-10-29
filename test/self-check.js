@@ -103,6 +103,45 @@ async function main() {
 	assert.match(readTasks("phase_1")[0].progress[1].detail, /retry/);
 	assert.equal("fail_desc" in readTasks("phase_1")[0], false);
 
+	// Legacy detail parser: labels only at line start, preamble/Files stay in goal, Done when kept in verify.
+	const { parseLegacyDetail } = require("../bin/commands/_shared/phase");
+	assert.deepEqual(parseLegacyDetail("Goal: g\nFiles: a.ts\nContract: see Steps: below\nSteps:\n1. one\n2) two\n- three\n   a. sub\nVerify: npm test\nDone when: green"), {
+		goal: "g\nFiles: a.ts",
+		contract: "see Steps: below",
+		steps: ["one", "two", "three", "a. sub"],
+		verify: "npm test\nDone when: green",
+	});
+	assert.deepEqual(parseLegacyDetail("free text, no labels"), { goal: "free text, no labels", contract: "", steps: [], verify: "" });
+
+	// A lone "a; b" step is split; ";" inside `code` or brackets is kept; multi-step lists untouched.
+	const { splitSteps } = require("../bin/commands/_shared/phase");
+	assert.deepEqual(splitSteps(["Use CRG; inspect diff. Run `a; b` (x; y);"]), ["Use CRG", "inspect diff. Run `a; b` (x; y)"]);
+	assert.deepEqual(splitSteps(["a; b", "c"]), ["a; b", "c"]);
+	assert.deepEqual(splitSteps(["no separator"]), ["no separator"]);
+
+	// migrate_format: dry-run writes nothing; real run backs up, rewrites legacy tasks only, is idempotent.
+	writePhase("phase_1", [task("D", { status: "start", detail: "Goal: g\nSteps:\n1. s\nVerify: v", progress: "[2026-01-01T00:00:00Z] did", fail_desc: "boom" })]);
+	const rawBefore = fs.readFileSync(path.join(tasksDir, "phase_1.json"), "utf8");
+	assert.match(ok("migrate_format", "--plan", "demo", "--dry-run"), /^Would migrate 1 phase file\(s\), 1 task\(s\) in plan demo\.\nphase_1\n$/);
+	assert.equal(fs.readFileSync(path.join(tasksDir, "phase_1.json"), "utf8"), rawBefore);
+	const migrated = ok("migrate_format", "--plan", "demo");
+	assert.match(migrated, /^Migrated 1 phase file\(s\), 1 task\(s\) in plan demo\. Backup: .*tasks\.bak-\d{8}\nphase_1\n$/);
+	const backupDir = /Backup: (.*)\n/.exec(migrated)[1];
+	assert.equal(fs.readFileSync(path.join(backupDir, "phase_1.json"), "utf8"), rawBefore);
+	const [d] = readTasks("phase_1");
+	assert.deepEqual(d.details, { goal: "g", contract: "", steps: ["s"], verify: "v" });
+	assert.deepEqual(d.progress, [{ time: "2026-01-01T00:00:00Z", detail: "did" }, { time: "", detail: "[legacy fail_desc] boom" }]);
+	assert.equal(d.status, "todo");
+	assert.equal("detail" in d || "fail_desc" in d, false);
+	assert.match(ok("migrate_format", "--plan", "demo"), /^Migrated 0 phase file\(s\), 0 task\(s\)/);
+	// Already-new-format task with one packed step also counts as needing reformat.
+	const packed = readTasks("phase_1");
+	packed[0].details.steps = ["x; y"];
+	writePhase("phase_1", packed);
+	assert.match(ok("migrate_format", "--plan", "demo"), /^Migrated 1 phase file\(s\), 1 task\(s\)/);
+	assert.deepEqual(readTasks("phase_1")[0].details.steps, ["x", "y"]);
+	for (const name of fs.readdirSync(path.dirname(tasksDir))) if (name.startsWith("tasks.bak-")) fs.rmSync(path.join(path.dirname(tasksDir), name), { recursive: true });
+
 	// Pure analysis: glob overlap, waves, critical path.
 	const { patternsOverlap, waves, criticalPath } = require("../bin/commands/_shared/analysis");
 	assert.equal(patternsOverlap("src/a.ts", "src/**"), true);
@@ -169,14 +208,15 @@ async function main() {
 	process.stdout.write("self-check passed\n");
 }
 
-function get(port, host) {
+function get(port, host, urlPath = "/api/tasks", method = "GET", headers = {}) {
 	return new Promise((resolve, reject) => {
-		const request = http.get({ host: "127.0.0.1", port, path: "/api/tasks", headers: { host } }, (response) => {
+		const request = http.request({ host: "127.0.0.1", port, path: urlPath, method, headers: { host, ...headers } }, (response) => {
 			let body = "";
 			response.on("data", (chunk) => { body += chunk; });
 			response.on("end", () => resolve({ status: response.statusCode, body }));
 		});
 		request.on("error", reject);
+		request.end();
 	});
 }
 
@@ -192,6 +232,7 @@ async function waitFor(fn, ms = 5000) {
 
 async function dashboardChecks() {
 	const port = String(40000 + Math.floor(Math.random() * 20000));
+	writePhase("phase_2", [task("X")]);
 	const server = spawn(process.execPath, [CLI, "dashboard_serve", "--project", project, "--port", port], { env });
 	try {
 		const okResponse = await waitFor(() => get(port, `127.0.0.1:${port}`));
@@ -200,14 +241,30 @@ async function dashboardChecks() {
 		assert.ok(Array.isArray(phase.errors) && Array.isArray(phase.warnings), "api lint fields");
 		assert.equal(typeof phase.wave.A, "number");
 		assert.ok(Array.isArray(phase.criticalPath));
+		// phase_2 holds one legacy-format task, so the Reformat button must show.
+		assert.equal(JSON.parse(okResponse.body).projects[0].plans[0].legacyTasks, 1);
+		// Reformat button endpoint: CSRF header required, then migrates in code and the count drops to 0.
+		const host = `127.0.0.1:${port}`;
+		const migrateUrl = `/api/migrate_format?project=${encodeURIComponent(fs.realpathSync(project))}&plan=demo`;
+		assert.equal((await get(port, host, migrateUrl, "POST")).status, 403);
+		assert.equal((await get(port, host, "/api/migrate_format?project=/etc&plan=demo", "POST", { "x-ppm-action": "1" })).status, 404);
+		const migratedRes = await get(port, host, migrateUrl, "POST", { "x-ppm-action": "1" });
+		assert.equal(migratedRes.status, 200, migratedRes.body);
+		const migratedBody = JSON.parse(migratedRes.body);
+		assert.deepEqual([migratedBody.phases, migratedBody.tasks], [["phase_2"], 1]);
+		fs.rmSync(migratedBody.backup, { recursive: true });
+		assert.equal(JSON.parse((await get(port, host)).body).projects[0].plans[0].legacyTasks, 0);
 		assert.equal((await get(port, `localhost:${port}`)).status, 200);
 		assert.equal((await get(port, `evil.example:${port}`)).status, 403);
+		// Standalone flag lets panel/app.js load without a pi-web cwd (else stuck on "Waiting for a workspace…").
+		assert.match((await get(port, `127.0.0.1:${port}`, "/ppm-data.js")).body, /window\.PpmStandalone = true/);
 		const clash = spawnSync(process.execPath, [CLI, "dashboard_serve", "--project", project, "--port", port], { env, encoding: "utf8", timeout: 5000 });
 		assert.equal(clash.status, 1);
 		assert.match(clash.stderr, /^Error: dashboard failed to start: port \d+ is already in use/);
 		assert.match(spawnSync(process.execPath, [CLI, "check_dashboard", "--port", port], { env, encoding: "utf8" }).stdout, /^Dashboard running: /);
 	} finally {
 		server.kill();
+		fs.unlinkSync(path.join(tasksDir, "phase_2.json"));
 	}
 }
 

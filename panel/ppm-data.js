@@ -37,25 +37,47 @@
       } else {
         task.details.steps = task.details.steps.map(function(s) { return String(s || ""); });
       }
+      task.details.steps = splitSteps(task.details.steps);
       if (typeof task.details.verify !== "string") task.details.verify = String(task.details.verify || "");
       return;
     }
-    var str = typeof task.detail === "string" ? task.detail : "";
-    var goalMatch = /Goal:\s*([\s\S]*?)(?=Contract:|Steps:|Verify:|Done when:|$)/i.exec(str);
-    var contractMatch = /Contract:\s*([\s\S]*?)(?=Goal:|Steps:|Verify:|Done when:|$)/i.exec(str);
-    var stepsMatch = /Steps:\s*([\s\S]*?)(?=Goal:|Contract:|Verify:|Done when:|$)/i.exec(str);
-    var verifyMatch = /Verify:\s*([\s\S]*?)(?=Goal:|Contract:|Steps:|Done when:|$)/i.exec(str);
-
-    var stepsStr = stepsMatch ? stepsMatch[1].trim() : "";
-    var steps = stepsStr ? stepsStr.split("\n").map(function(s) { return s.replace(/^[-*\d.\s]+/, "").trim(); }).filter(Boolean) : [];
-
-    task.details = {
-      goal: goalMatch ? goalMatch[1].trim() : str,
-      contract: contractMatch ? contractMatch[1].trim() : "",
-      steps: steps,
-      verify: verifyMatch ? verifyMatch[1].trim() : ""
-    };
+    task.details = parseLegacyDetail(typeof task.detail === "string" ? task.detail : "");
     delete task.detail;
+  }
+
+  // Mirror of parseLegacyDetail in bin/commands/_shared/phase.js (keep in sync).
+  var DETAIL_LABEL = /^[ \t]*(Goal|Contract|Steps|Verify|Done when):[ \t]*/gim;
+  function parseLegacyDetail(str) {
+    var marks = Array.from(str.matchAll(DETAIL_LABEL));
+    var sections = { goal: [str.slice(0, marks.length ? marks[0].index : str.length)], contract: [], steps: [], verify: [], "done when": [] };
+    marks.forEach(function (mark, i) {
+      sections[mark[1].toLowerCase()].push(str.slice(mark.index + mark[0].length, i + 1 < marks.length ? marks[i + 1].index : str.length));
+    });
+    function text(key) { return sections[key].map(function (s) { return s.trim(); }).filter(Boolean).join("\n"); }
+    var doneWhen = text("done when");
+    return {
+      goal: text("goal"),
+      contract: text("contract"),
+      steps: splitSteps(text("steps").split("\n").map(function (s) { return s.replace(/^\s*(?:[-*]|\d+[.)])\s+/, "").trim(); }).filter(Boolean)),
+      verify: [text("verify"), doneWhen && "Done when: " + doneWhen].filter(Boolean).join("\n")
+    };
+  }
+
+  // Mirror of splitSteps in bin/commands/_shared/phase.js (keep in sync).
+  function splitSteps(steps) {
+    if (steps.length !== 1) return steps;
+    var parts = [], current = "", tick = false, depth = 0;
+    for (var i = 0; i < steps[0].length; i += 1) {
+      var ch = steps[0][i];
+      if (ch === "`") tick = !tick;
+      else if (!tick && "([{".indexOf(ch) >= 0) depth += 1;
+      else if (!tick && ")]}".indexOf(ch) >= 0 && depth) depth -= 1;
+      if (ch === ";" && !tick && !depth) { parts.push(current); current = ""; continue; }
+      current += ch;
+    }
+    parts.push(current);
+    var out = parts.map(function (part) { return part.trim(); }).filter(Boolean);
+    return out.length > 1 ? out : steps;
   }
 
   var TIMESTAMP_REGEX = /^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]\s?/;
@@ -474,9 +496,11 @@
     } catch (error) {
       throw new Error("invalid JSON in " + file + ": " + (error && error.message ? error.message : String(error)));
     }
+    var before = Array.isArray(phase && phase.tasks) ? phase.tasks.map(function (task) { return JSON.stringify(task); }) : [];
     normalizeLegacy(phase);
     validatePhase(phase, expectedPhase);
-    return phase;
+    // legacyTasks = tasks `ppm migrate_format` would rewrite; drives the "Reformat Plan" button.
+    return { phase: phase, legacyTasks: phase.tasks.filter(function (task, i) { return JSON.stringify(task) !== before[i]; }).length };
   }
 
   async function readPlanData(plansRoot, name) {
@@ -490,11 +514,14 @@
     }
 
     var phases = [];
+    var legacyTasks = 0;
     try {
       var names = await listPhaseNames(planRoot);
       var built = await Promise.all(names.map(async function (phaseName) {
         try {
-          var phase = await readPhase(planRoot + "/tasks/" + phaseName + ".json", phaseName);
+          var read = await readPhase(planRoot + "/tasks/" + phaseName + ".json", phaseName);
+          var phase = read.phase;
+          legacyTasks += read.legacyTasks;
           var lint = lintPhase(phase);
           var wave = {};
           waves(phase).forEach(function (tasks, index) {
@@ -521,7 +548,7 @@
     }
 
     var metadata = planMetadata(content);
-    return { name: name, filePath: planRoot + "/plan.md", content: content, createdAt: metadata.createdAt, lastUpdated: metadata.lastUpdated, phases: phases, errors: errors };
+    return { name: name, filePath: planRoot + "/plan.md", content: content, createdAt: metadata.createdAt, lastUpdated: metadata.lastUpdated, phases: phases, errors: errors, legacyTasks: legacyTasks };
   }
 
   async function readProjectData(root, name) {
@@ -547,5 +574,44 @@
     return { generatedAt: new Date().toISOString(), currentProjectId: root, projects: projects };
   }
 
-  window.PpmData = { loadDashboard: loadDashboard, encodePath: encodePath };
+  // Writes go through pi-web's upload API (atomic temp-file + rename on overwrite).
+  async function uploadFile(dir, name, content, conflict) {
+    var form = new FormData();
+    form.append("files", new Blob([content], { type: "application/json" }), name);
+    var response = await fetch("/api/files/" + encodePath(dir) + "?type=upload&conflict=" + conflict, { method: "POST", body: form });
+    var data = await response.json().catch(function () { return {}; });
+    if (!response.ok || (data.errors && data.errors.length)) {
+      throw new Error("Cannot write " + dir + "/" + name + ": " + (data.error || (data.errors && data.errors[0] && data.errors[0].error) || "HTTP " + response.status));
+    }
+  }
+
+  // Browser port of `ppm migrate_format` (bin/commands/setup/format.js). pi-web has no mkdir API, so
+  // each changed file is backed up beside itself as <phase>.json.bak-YYYYMMDD-HHMMSS (never overwritten).
+  // ponytail: no cross-process lock here (pi-web has none); a task_* write racing this click can be lost.
+  async function migrateFormat(projectPath, plan) {
+    if (!PLAN_PATTERN.test(plan)) throw new Error("invalid plan name: " + plan);
+    var tasksDir = projectPath + "/.ppm/" + plan + "/tasks";
+    var names = await listPhaseNames(projectPath + "/.ppm/" + plan);
+    // Parse + validate everything first so one broken file aborts before any write.
+    var pending = (await Promise.all(names.map(async function (name) {
+      var file = tasksDir + "/" + name + ".json";
+      var raw = await readTextFile(file);
+      var read = await readPhase(file, name);
+      return { name: name, raw: raw, phase: read.phase, legacyTasks: read.legacyTasks };
+    }))).filter(function (entry) { return entry.legacyTasks; });
+    var stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+    for (var i = 0; i < pending.length; i += 1) {
+      var entry = pending[i];
+      await uploadFile(tasksDir, entry.name + ".json.bak-" + stamp, entry.raw, "error");
+      await uploadFile(tasksDir, entry.name + ".json", JSON.stringify(entry.phase, null, 2) + "\n", "overwrite");
+    }
+    return {
+      plan: plan,
+      phases: pending.map(function (entry) { return entry.name; }),
+      tasks: pending.reduce(function (sum, entry) { return sum + entry.legacyTasks; }, 0),
+      backup: pending.length ? tasksDir + "/<phase>.json.bak-" + stamp : null
+    };
+  }
+
+  window.PpmData = { loadDashboard: loadDashboard, migrateFormat: migrateFormat, encodePath: encodePath };
 })();

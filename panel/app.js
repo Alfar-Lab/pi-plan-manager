@@ -18,7 +18,7 @@
   var host = window.parent !== window;
 
   // ============== state ==============
-  var state = { data: null, project: "", query: "", filter: "all", open: new Map(), cwd: params.get("cwd") || "" };
+  var state = { data: null, project: "", query: "", filter: "all", open: new Map(), waveTab: new Map(), cwd: params.get("cwd") || "" };
 
   // ============== host bridge ==============
   function sendHost(message) {
@@ -65,7 +65,6 @@
     waiting: "text-[#8996a8] bg-[#161d27] border-[#2d3747]",
     current: "text-teal-300 bg-teal-950/60 border-teal-800/70",
     agent: "text-violet-300 bg-violet-950/50 border-violet-800/60",
-    wave: "text-[#8996a8] bg-transparent border-[#2d3747]",
   };
   var COMPLETION_VARIANT = {
     zero: { text: "text-[#8996a8]", bar: "bg-[#39424f]" },
@@ -78,6 +77,9 @@
     complete: "text-emerald-100",
   };
   var MUTED = "text-[#8996a8] text-[12px] sm:text-[13px]";
+  var TAB_BASE = "font-mono text-[11px] px-2.5 py-1 -mb-px border-b-2 cursor-pointer transition-colors";
+  var TAB_ACTIVE = "text-teal-300 border-teal-400";
+  var TAB_IDLE = "text-[#8996a8] border-transparent hover:text-[#c3ccd9]";
   var META = "font-mono text-[10.5px] sm:text-[11px] text-[#6d7889]";
   var BUTTON = "text-[#c3ccd9] bg-[#161d27] border border-[#232b38] rounded-md px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium cursor-pointer hover:border-teal-500/50 hover:text-teal-300 transition-colors";
   var BUTTON_PRIMARY = "text-[#0a0e14] bg-teal-400 border border-teal-400 rounded-md px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold cursor-pointer hover:bg-teal-300 transition-colors";
@@ -181,9 +183,8 @@
   }
   function TaskSummary(task, ctx) {
     var dot = '<span class="' + cls("inline-block w-1.5 h-1.5 rounded-full shrink-0", TASK_DOT[task.status]) + '"></span>';
-    var wave = ctx.wave[task.id] ? Badge("wave", "W" + ctx.wave[task.id], "Wave " + ctx.wave[task.id] + " of this phase") : "";
     var agent = task.agent ? Badge("agent", task.agent, "Agent role hint") : "";
-    return '<span class="flex items-center gap-2 min-w-0 w-full"><span class="font-mono text-[10.5px] sm:text-[11px] text-[#5b6577] shrink-0">' + esc(task.id) + '</span><span class="truncate text-[13px] sm:text-[13.5px] text-[#dde3ec]">' + esc(task.title) + '</span></span><span class="flex flex-wrap items-center gap-1.5 mt-1 sm:mt-0 sm:justify-end">' + dot + '<span class="' + cls(MUTED, "font-mono text-[11px]") + '">' + esc(task.status) + "</span>" + wave + agent + TaskBadge(task, ctx) + "</span>";
+    return '<span class="flex items-center gap-2 min-w-0 w-full"><span class="font-mono text-[10.5px] sm:text-[11px] text-[#5b6577] shrink-0">' + esc(task.id) + '</span><span class="truncate text-[13px] sm:text-[13.5px] text-[#dde3ec]">' + esc(task.title) + '</span></span><span class="flex flex-wrap items-center gap-1.5 mt-1 sm:mt-0 sm:justify-end">' + dot + '<span class="' + cls(MUTED, "font-mono text-[11px]") + '">' + esc(task.status) + "</span>" + agent + TaskBadge(task, ctx) + "</span>";
   }
   function TaskBody(task) {
     var deps = list(task.pre_request);
@@ -236,6 +237,19 @@
     return [task.id, task.title, d.goal, d.contract, stepText, d.verify, progText, task.status, task.agent].concat(list(task.files))
       .some(function (value) { return String(value || "").toLowerCase().includes(query); });
   }
+  function waveOf(ctx, task) {
+    return ctx.wave[task.id] || 1;
+  }
+  // One tab per wave that has visible tasks; counts cover the whole wave, not just search matches.
+  function WaveTabs(key, waveNums, active, phaseTasks, ctx) {
+    return '<div role="tablist" class="flex flex-wrap gap-1 mt-2 border-b border-[#1c2431]">' + waveNums.map(function (n) {
+      var waveTasks = phaseTasks.filter(function (task) { return waveOf(ctx, task) === n; });
+      var done = waveTasks.filter(function (task) { return task.status === "completed"; }).length;
+      var selected = n === active;
+      var count = '<span class="' + (done === waveTasks.length ? "text-emerald-400" : "text-[#5b6577]") + '">' + done + "/" + waveTasks.length + "</span>";
+      return '<button type="button" role="tab" aria-selected="' + selected + '" data-wave-tab="' + esc(key) + '" data-wave="' + n + '" title="Wave ' + n + ": " + done + "/" + waveTasks.length + ' completed" class="' + cls(TAB_BASE, selected ? TAB_ACTIVE : TAB_IDLE) + '">W' + n + " " + count + "</button>";
+    }).join("") + "</div>";
+  }
   function PhaseSection(options) {
     var plan = options.plan, phase = options.phase, query = options.query, projectId = options.projectId, current = options.current;
     var tasks = phase.tasks.filter(function (task) { return !query || matches(task, query); });
@@ -254,7 +268,21 @@
     var critical = list(phase.criticalPath);
     var schedule = phase.tasks.length ? '<div class="' + META + ' mt-1 break-words">' + waveCount + " wave" + (waveCount === 1 ? "" : "s") + " · critical path: " + (critical.map(esc).join(" → ") || "—") + "</div>" : "";
     var summary = '<summary class="cursor-pointer flex gap-2 items-start">' + CHEVRON + '<div class="min-w-0 mr-auto"><strong class="block text-[13px] sm:text-[14px] font-semibold ' + titleClass(phaseStats.percent) + ' truncate">' + esc(phase.title) + '</strong><div class="flex flex-wrap items-center gap-1.5 mt-0.5"><span class="' + META + '">' + esc(phase.name) + "</span>" + stateBadge + issueBadges + "</div></div>" + CompletionBadge(phaseStats) + "</summary>";
-    var body = '<div class="pt-2">' + ProgressBar(phaseStats.percent, variant) + schedule + Notice("error", errors) + Notice("warning", warnings) + PhaseActions(plan, phase) + (tasks.map(function (task) { return TaskRow({ task: task, ctx: ctx, key: key + "/" + task.id }); }).join("") || '<span class="' + MUTED + '">No tasks</span>') + "</div>";
+    var waveNums = tasks.map(function (task) { return waveOf(ctx, task); })
+      .filter(function (n, i, all) { return all.indexOf(n) === i; })
+      .sort(function (a, b) { return a - b; });
+    // Default tab: first wave with unfinished work, else first wave.
+    var active = state.waveTab.get(key);
+    if (waveNums.indexOf(active) < 0) {
+      active = waveNums.find(function (n) {
+        return tasks.some(function (task) { return waveOf(ctx, task) === n && task.status !== "completed"; });
+      }) || waveNums[0];
+    }
+    var shown = tasks.filter(function (task) { return waveOf(ctx, task) === active; });
+    var taskList = shown.length
+      ? WaveTabs(key, waveNums, active, phase.tasks, ctx) + '<div role="tabpanel">' + shown.map(function (task) { return TaskRow({ task: task, ctx: ctx, key: key + "/" + task.id }); }).join("") + "</div>"
+      : '<span class="' + MUTED + '">No tasks</span>';
+    var body = '<div class="pt-2">' + ProgressBar(phaseStats.percent, variant) + schedule + Notice("error", errors) + Notice("warning", warnings) + PhaseActions(plan, phase) + taskList + "</div>";
     return '<details data-key="' + esc(key) + '"' + openAttr + ' class="bg-[#0d1218] border border-[#1c2431] rounded-lg p-2.5 sm:p-3.5 min-w-0">' + summary + body + "</details>";
   }
 
@@ -378,6 +406,8 @@
   document.querySelector("#search").addEventListener("input", function (event) { state.query = event.target.value; render(); });
   document.querySelector("#refresh").addEventListener("click", load);
   document.querySelector("#content").addEventListener("click", function (event) {
+    var waveTab = event.target.closest("[data-wave-tab]");
+    if (waveTab) { state.waveTab.set(waveTab.dataset.waveTab, Number(waveTab.dataset.wave)); render(); return; }
     var reformatButton = event.target.closest("[data-reformat]");
     if (reformatButton) { reformatPlan(reformatButton); return; }
     var promptButton = event.target.closest("[data-prompt]");

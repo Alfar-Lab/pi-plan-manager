@@ -7,6 +7,7 @@ const path = require("node:path");
 const { URL } = require("node:url");
 
 const { PLAN_PATTERN, assertSafeSegment, projectRoot, readPhaseFile, listPhaseNames } = require("../_shared/phase");
+const { PLAN_DOCS } = require("../_shared/patterns");
 const { lintPhase, waves, criticalPath } = require("../_shared/analysis");
 const { migrateFormat } = require("./format");
 
@@ -123,7 +124,19 @@ function readPlanData(plansRoot, name) {
 	const planRoot = path.join(plansRoot, name);
 	const errors = [];
 	let content = "";
-	try { content = fs.readFileSync(path.join(planRoot, "plan.md"), "utf8"); } catch (error) { if (error.code !== "ENOENT") errors.push(`plan.md: ${error.message}`); }
+	let meta = "";
+	// Dashboard modal shows plan.md then each topic file; metadata comes from plan.md only.
+	const parts = ["plan.md", ...PLAN_DOCS].flatMap((file) => {
+		try {
+			const text = fs.readFileSync(path.join(planRoot, file), "utf8");
+			if (file === "plan.md") meta = text;
+			return [file === "plan.md" ? text.trimEnd() : `\n---\n<!-- ${file} -->\n\n${text.trimEnd()}`];
+		} catch (error) {
+			if (error.code !== "ENOENT") errors.push(`${file}: ${error.message}`);
+			return [];
+		}
+	});
+	content = parts.length ? `${parts.join("\n")}\n` : "";
 	let phases = [];
 	let legacyTasks = 0;
 	try {
@@ -153,7 +166,7 @@ function readPlanData(plansRoot, name) {
 			}
 		});
 	} catch (error) { errors.push(`tasks: ${error.message}`); }
-	return { name, content, ...planMetadata(content), phases, errors, legacyTasks };
+	return { name, content, ...planMetadata(meta), phases, errors, legacyTasks };
 }
 
 function readProjectData(project) {

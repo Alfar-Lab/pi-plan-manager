@@ -115,11 +115,8 @@ function fileConflicts(phase) {
 	return conflicts;
 }
 
-const DETAIL_SECTIONS = ["Goal", "Files", "Steps", "Verify", "Done when"];
-
-function missingSections(detail) {
-	return DETAIL_SECTIONS.filter((section) => !new RegExp(`^\\s*(?:#+\\s*)?${section}\\s*:?`, "im").test(detail));
-}
+// File ownership lives only in task.files; a "Files:" section inside details duplicates it and drifts.
+const FILES_IN_DETAILS = /^[ \t]*Files[ \t]*:/im;
 
 // Advisory findings for one phase. Errors = defects that break parallel execution; warnings = efficiency/clarity smells.
 function lintPhase(phase) {
@@ -153,9 +150,10 @@ function lintPhase(phase) {
 		if (!d.steps?.length) missing.push("steps");
 		if (!d.verify?.trim()) missing.push("verify");
 		if (missing.length) warnings.push(`${task.id}: details missing context-packet fields: ${missing.join(", ")}`);
+		if (FILES_IN_DETAILS.test([d.goal, d.contract, ...(d.steps || []), d.verify].join("\n"))) warnings.push(`${task.id}: details contains a "Files:" section; list owned paths only in the files array`);
 		if (!task.agent) warnings.push(`${task.id}: no agent role hint (explore|implement|review|verify)`);
 	}
 	return { errors, warnings };
 }
 
-module.exports = { waves, criticalPath, concurrentPairs, patternsOverlap, fileConflicts, lintPhase, DETAIL_SECTIONS };
+module.exports = { waves, criticalPath, concurrentPairs, patternsOverlap, fileConflicts, lintPhase };

@@ -37,6 +37,14 @@
       } else {
         task.details.steps = task.details.steps.map(function(s) { return String(s || ""); });
       }
+      if (FILES_LABEL.test(task.details.goal)) {
+        var moved = parseLegacyDetail(task.details.goal);
+        var join = function (a, b) { return [a, b].filter(Boolean).join("\n"); };
+        task.details.goal = moved.goal;
+        task.details.contract = join(moved.contract, task.details.contract);
+        task.details.steps = moved.steps.concat(task.details.steps);
+        task.details.verify = join(moved.verify, task.details.verify);
+      }
       task.details.steps = splitSteps(task.details.steps);
       if (typeof task.details.verify !== "string") task.details.verify = String(task.details.verify || "");
       return;
@@ -46,18 +54,22 @@
   }
 
   // Mirror of parseLegacyDetail in bin/commands/_shared/phase.js (keep in sync).
-  var DETAIL_LABEL = /^[ \t]*(Goal|Contract|Steps|Verify|Done when):[ \t]*/gim;
+  var DETAIL_LABEL = /^[ \t]*(Goal|Files|Contract|Steps|Verify|Done when)([ \t]*\([^)\n]*\))?[ \t]*:[ \t]*/gim;
+  var FILES_LABEL = /^[ \t]*Files([ \t]*\([^)\n]*\))?[ \t]*:/im;
   function parseLegacyDetail(str) {
     var marks = Array.from(str.matchAll(DETAIL_LABEL));
-    var sections = { goal: [str.slice(0, marks.length ? marks[0].index : str.length)], contract: [], steps: [], verify: [], "done when": [] };
+    var sections = { goal: [str.slice(0, marks.length ? marks[0].index : str.length)], files: [], contract: [], steps: [], verify: [], "done when": [] };
     marks.forEach(function (mark, i) {
-      sections[mark[1].toLowerCase()].push(str.slice(mark.index + mark[0].length, i + 1 < marks.length ? marks[i + 1].index : str.length));
+      var key = mark[1].toLowerCase();
+      var body = str.slice(mark.index + mark[0].length, i + 1 < marks.length ? marks[i + 1].index : str.length).trim();
+      var label = key === "files" ? "Scope" : mark[2] ? mark[1] : "";
+      if (body) sections[key].push(label ? label + (mark[2] ? " " + mark[2].trim() : "") + ": " + body : body);
     });
     function text(key) { return sections[key].map(function (s) { return s.trim(); }).filter(Boolean).join("\n"); }
     var doneWhen = text("done when");
     return {
       goal: text("goal"),
-      contract: text("contract"),
+      contract: [text("files"), text("contract")].filter(Boolean).join("\n"),
       steps: splitSteps(text("steps").split("\n").map(function (s) { return s.replace(/^\s*(?:[-*]|\d+[.)])\s+/, "").trim(); }).filter(Boolean)),
       verify: [text("verify"), doneWhen && "Done when: " + doneWhen].filter(Boolean).join("\n")
     };
@@ -343,13 +355,8 @@
     return conflicts;
   }
 
-  var DETAIL_SECTIONS = ["Goal", "Files", "Steps", "Verify", "Done when"];
-
-  function missingSections(detail) {
-    return DETAIL_SECTIONS.filter(function (section) {
-      return !new RegExp("^\\s*(?:#+\\s*)?" + section + "\\s*:?", "im").test(detail);
-    });
-  }
+  // Mirror of FILES_IN_DETAILS in bin/commands/_shared/analysis.js.
+  var FILES_IN_DETAILS = /^[ \t]*Files[ \t]*:/im;
 
   function lintPhase(phase) {
     var errors = [];
@@ -386,6 +393,7 @@
       if (!Array.isArray(d.steps) || !d.steps.length) missing.push("steps");
       if (!d.verify || !String(d.verify).trim()) missing.push("verify");
       if (missing.length) warnings.push(task.id + ": details missing context-packet fields: " + missing.join(", "));
+      if (FILES_IN_DETAILS.test([d.goal, d.contract].concat(d.steps || [], [d.verify]).join("\n"))) warnings.push(task.id + ': details contains a "Files:" section; list owned paths only in the files array');
       if (!task.agent) warnings.push(task.id + ": no agent role hint (explore|implement|review|verify)");
     });
     return { errors: errors, warnings: warnings };
@@ -506,12 +514,21 @@
   async function readPlanData(plansRoot, name) {
     var planRoot = plansRoot + "/" + name;
     var errors = [];
-    var content = "";
-    try {
-      content = await readTextFile(planRoot + "/plan.md");
-    } catch (error) {
-      if (error.status !== 404) errors.push("plan.md: " + error.message);
-    }
+    var meta = "";
+    // Modal shows plan.md then each topic file (mirrors bin/commands/setup/helper.js); metadata comes from plan.md only.
+    var docs = ["plan.md", "plan.objective.md", "plan.constraint_invariant.md", "plan.approach.md", "plan.risk.md"];
+    var parts = await Promise.all(docs.map(async function (file) {
+      try {
+        var text = await readTextFile(planRoot + "/" + file);
+        if (file === "plan.md") meta = text;
+        return file === "plan.md" ? text.trimEnd() : "\n---\n<!-- " + file + " -->\n\n" + text.trimEnd();
+      } catch (error) {
+        if (error.status !== 404) errors.push(file + ": " + error.message);
+        return null;
+      }
+    }));
+    parts = parts.filter(function (part) { return part !== null; });
+    var content = parts.length ? parts.join("\n") + "\n" : "";
 
     var phases = [];
     var legacyTasks = 0;
@@ -547,7 +564,7 @@
       errors.push("tasks: " + error.message);
     }
 
-    var metadata = planMetadata(content);
+    var metadata = planMetadata(meta);
     return { name: name, filePath: planRoot + "/plan.md", content: content, createdAt: metadata.createdAt, lastUpdated: metadata.lastUpdated, phases: phases, errors: errors, legacyTasks: legacyTasks };
   }
 

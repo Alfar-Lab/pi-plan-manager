@@ -4,7 +4,7 @@ Use this flow to audit or review a plan before execution. Read this file in full
 
 ## Resolve and inspect safely
 
-Resolve `<project-path>` and `<plan-name>`. Do not initialize or register anything during the audit. Pass `--project <project-path>` to CLI commands when explicit project resolution is needed. If the plan or required files do not exist, report that evidence and return `not_ready`; do not create them. Inspect `<project-path>/.ppm/<plan-name>/plan.md`. Use the read-only CLI for phase order, schema validity, and task data:
+Resolve `<project-path>` and `<plan-name>`. Do not initialize or register anything during the audit. Pass `--project <project-path>` to CLI commands when explicit project resolution is needed. If the plan or required files do not exist, report that evidence and return `not_ready`; do not create them. Inspect `plan.md` and all four `plan.*.md` files under `<project-path>/.ppm/<plan-name>/`. Use the read-only CLI for phase order, schema validity, and task data:
 
 ```bash
 ppm plan_validate --plan <name> [--project <project-path>]
@@ -26,7 +26,7 @@ Assess:
 - phase ordering and dependencies;
 - task atomicity and actionability;
 - stable IDs and valid `todo|in_progress|completed|fail` statuses;
-- plan-to-task and task-to-deliverable coverage;
+- plan-to-task and task-to-deliverable coverage: every phase matches its `plan.approach.md` entry, every `plan.objective.md` Done when criterion is covered by some task's `verify`, and constraints that tasks must honor appear in their `details.contract`;
 - acceptance and verification specificity;
 - referenced-path existence;
 - risks and mitigations;
@@ -35,7 +35,7 @@ Assess:
 - rollback or migration needs where applicable;
 - parallel efficiency: phases used only as real sync barriers, wave width and critical path from `plan_waves`, false `pre_request` dependencies;
 - file ownership: every concurrent task declares `files`, no overlaps, hotspot files owned by a single foundation or integration task;
-- context packets: each `detail` is self-contained (Goal, Files, Contract, Steps, Verify, Done when) with no references to other tasks or `plan.md`;
+- context packets: each `details` is self-contained (`goal`, `contract`, `steps`, `verify`) with no references to other tasks or plan files, and owned paths appear only in `files`, never as a `Files:` section inside `details`;
 - `agent` role hints and a closing integration/verify task per phase;
 - execution readiness.
 

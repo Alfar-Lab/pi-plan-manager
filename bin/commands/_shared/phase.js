@@ -77,6 +77,12 @@ function normalizeDetails(task) {
 		} else {
 			task.details.steps = task.details.steps.map((s) => String(s || ""));
 		}
+		// A "Files:" block written into goal is split out the same way as in a legacy detail string.
+		if (FILES_LABEL.test(task.details.goal)) {
+			const moved = parseLegacyDetail(task.details.goal);
+			const join = (a, b) => [a, b].filter(Boolean).join("\n");
+			Object.assign(task.details, { goal: moved.goal, contract: join(moved.contract, task.details.contract), steps: moved.steps.concat(task.details.steps), verify: join(moved.verify, task.details.verify) });
+		}
 		task.details.steps = splitSteps(task.details.steps);
 		if (typeof task.details.verify !== "string") task.details.verify = String(task.details.verify || "");
 		return;
@@ -85,20 +91,28 @@ function normalizeDetails(task) {
 	delete task.detail;
 }
 
-// Legacy `detail` string -> details object, losslessly. Labels count only at line start, so inline
-// mentions ("... Contract: POST ...") stay in their section. Text before the first label and any
-// "Files:" block stay in goal; "Done when:" is appended to verify.
-const DETAIL_LABEL = /^[ \t]*(Goal|Contract|Steps|Verify|Done when):[ \t]*/gim;
+// Legacy `detail` string -> details object, losslessly. Labels count only at line start (optionally
+// qualified, "Contract (types.ts):"), so inline mentions stay in their section. Text before the first
+// label stays in goal; "Done when:" is appended to verify. A "Files:" block never stays in goal (task.files
+// owns paths); its text, which often carries constraints ("do not touch ..."), moves to contract as "Scope:".
+const DETAIL_LABEL = /^[ \t]*(Goal|Files|Contract|Steps|Verify|Done when)([ \t]*\([^)\n]*\))?[ \t]*:[ \t]*/gim;
+const FILES_LABEL = /^[ \t]*Files([ \t]*\([^)\n]*\))?[ \t]*:/im;
 
 function parseLegacyDetail(str) {
 	const marks = [...str.matchAll(DETAIL_LABEL)];
-	const sections = { goal: [str.slice(0, marks.length ? marks[0].index : str.length)], contract: [], steps: [], verify: [], "done when": [] };
-	marks.forEach((mark, i) => sections[mark[1].toLowerCase()].push(str.slice(mark.index + mark[0].length, i + 1 < marks.length ? marks[i + 1].index : str.length)));
+	const sections = { goal: [str.slice(0, marks.length ? marks[0].index : str.length)], files: [], contract: [], steps: [], verify: [], "done when": [] };
+	marks.forEach((mark, i) => {
+		const key = mark[1].toLowerCase();
+		const body = str.slice(mark.index + mark[0].length, i + 1 < marks.length ? marks[i + 1].index : str.length).trim();
+		// Files text becomes "Scope:"; a qualifier ("Contract (types.ts):") is kept as a label prefix.
+		const label = key === "files" ? "Scope" : mark[2] ? mark[1] : "";
+		if (body) sections[key].push(label ? `${label}${mark[2] ? ` ${mark[2].trim()}` : ""}: ${body}` : body);
+	});
 	const text = (key) => sections[key].map((s) => s.trim()).filter(Boolean).join("\n");
 	const doneWhen = text("done when");
 	return {
 		goal: text("goal"),
-		contract: text("contract"),
+		contract: [text("files"), text("contract")].filter(Boolean).join("\n"),
 		steps: splitSteps(text("steps").split("\n").map((s) => s.replace(/^\s*(?:[-*]|\d+[.)])\s+/, "").trim()).filter(Boolean)),
 		verify: [text("verify"), doneWhen && `Done when: ${doneWhen}`].filter(Boolean).join("\n"),
 	};

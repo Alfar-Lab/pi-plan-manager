@@ -14,6 +14,8 @@ ppm plan_status --plan <plan-name> [--project <project-path>]
 
 Start at the `Current:` phase it reports and process phases in numeric order without skipping.
 
+Read `<project-path>/.ppm/<plan-name>/plan.constraint_invariant.md` once before dispatching: its rules are part of every verification in step 6. Read `plan.md` only for `Base commit:`. Do not load the other plan files during execution unless a worker reports a conflict that the task details cannot settle. Workers never read plan files; everything they need is in `ppm task_get`.
+
 ## Roles
 
 - Orchestrator (you, the main agent): reads the schedule, dispatches tasks, verifies results, and owns every status change (`task_in_progress`, `task_completed`, `task_fail`, `task_reset`).
@@ -36,7 +38,7 @@ Before the first phase, run `ppm plan_validate --plan <name>` and `ppm plan_wave
 3. `task_ready` already lists each ready task with its agent hint and owned files. For each, call `ppm task_get` (full Detail, plus Progress when resuming), then `ppm task_in_progress`. Status commands report newly unblocked tasks and phase completion, so you rarely need an extra `task_list`. The CLI rejects blocked tasks and tasks whose earlier phase is not fully `completed`; do not bypass with `--force` unless the user explicitly asks.
 4. Dispatch all ready tasks of the wave in parallel, in a single batch, one worker per task. Map the `agent` hint to the closest available sub agent type: `explore` to a read-only explorer, `implement` to an editing/coding agent, `review` to a reviewer, `verify` to an agent that can run commands. Without a hint, pick by the task detail.
 5. The dispatch prompt must be self-contained, because workers start with no context. Include: project root, plan name, the complete `ppm task_get` output verbatim (it already carries phase, task ID, agent, owned files, Detail, and Progress), the rule "modify only the listed Files; report instead of editing anything else", the exact `ppm task_write_progress --plan <name> --phase <phase_x> --task-id <id> [--project <path>] --progress-text "..."` command to record evidence, and the rule "do not change task status".
-6. When each worker returns, verify with real command output before trusting its summary: run the task's `Verify` commands and check the diff stays inside the owned `files`. Out-of-scope edits count as a failure.
+6. When each worker returns, verify with real command output before trusting its summary: run the task's `Verify` commands, check the diff stays inside the owned `files`, and check it breaks no rule in `plan.constraint_invariant.md`. Out-of-scope edits and constraint violations count as a failure.
 7. Record the verification evidence with `ppm task_write_progress` (appends a timestamped entry; `--replace` only to deliberately overwrite).
 8. Verified: `ppm task_completed`. Not verified: re-dispatch once with the exact defect; if it fails again, write the failure context, call `ppm task_fail`, and stop unless the user explicitly requests continuation. A `fail` keeps dependents blocked until `ppm task_reset` or a successful retry via `ppm task_in_progress` then `ppm task_completed`.
 9. Repeat from step 1 for the next wave. The phase's closing integration/verify task runs last and gates the phase.
@@ -52,7 +54,7 @@ Before quoting any dashboard URL to the user, run `ppm check_dashboard [--port <
 
 ## Completion report
 
-Confirm plan completion through `ppm plan_status`. Report changed files, statuses, verification evidence, unresolved questions, failures, and whether the plan is complete.
+Confirm plan completion through `ppm plan_status`, then read the `## Done when` section of `plan.objective.md` and check every criterion with real command output. An unmet criterion means the plan is not done: report it and stop (or, if the user asks, add tasks through the adjustment flow). Report changed files, statuses, verification evidence, unresolved questions, failures, and whether the plan is complete.
 
 ## Execution command reference
 

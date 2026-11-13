@@ -16,7 +16,11 @@ The plan layout is:
 
 ```text
 <project-path>/.ppm/<plan-name>/
-|-- plan.md
+|-- plan.md                       metadata, file index, changelog
+|-- plan.objective.md             what and why, scope, Done when
+|-- plan.constraint_invariant.md  rules every task must respect
+|-- plan.approach.md              design, current state, phases
+|-- plan.risk.md                  risks, mitigations, open questions
 `-- tasks/
     |-- phase_0.json
     |-- phase_1.json
@@ -30,40 +34,49 @@ The plan layout is:
 - Do not invent requirements. Ask when missing information changes scope, behavior, acceptance criteria, or architecture.
 - Make phases ordered, dependency-aware, independently verifiable, and traceable to deliverables.
 - Link source requirements and related project documentation with relative paths.
-- Include `Last updated: YYYY-MM-DD` in maintained Markdown files.
 - Write phase task data only through `ppm task_upsert` / `ppm task_remove`, never by writing or editing phase JSON files (see "Writing tasks" below). Execution uses the status and progress commands.
 - Inspect the execution environment before writing any `verify` step (see "Verification environment" below). A plan whose verify commands cannot pass in the real environment is an invalid plan.
 
-## Mandatory plan.md format
+## Plan documents
 
-Every `plan.md` must use this exact skeleton:
+The plan is five small files so each reader loads only what it needs. `plan_validate` errors when one is missing. Keep each file short: facts and decisions, not narrative. Anything a worker needs goes into the task's `details`, never only into these files.
+
+`plan.md` (metadata only):
 
 ```markdown
 # <Plan Name>
 
 Created: <YYYY-MM-DD>
 Last updated: <YYYY-MM-DD>
+Base commit: <git HEAD the plan was written against>
 
-## 1. Objective
+## Files
+- plan.objective.md: objective, scope, Done when
+- plan.constraint_invariant.md: constraints and invariants
+- plan.approach.md: approach and phases
+- plan.risk.md: risks and open questions
 
-## 2. Source documents and requirements
-
-## 3. Current-state findings
-
-## 4. Constraints and invariants
-
-## 5. Proposed approach
-
-## 6. Dependencies
-
-## 7. Risks and mitigations
-
-## 8. Verification strategy
-
-## 9. Definition of done
+## Changelog
+- <YYYY-MM-DD>: created
 ```
 
-The headings, their order, and the `Created:` and `Last updated:` metadata labels are mandatory. `Created` remains the initial creation date. Change `Last updated` whenever `plan.md` or a phase plan definition is maintained. Do not add the previously used Ordered phases or Deliverables sections to the mandatory skeleton; phase delivery details belong in phase JSON or appropriate existing narrative. Every JSON task must trace to a phase deliverable.
+`plan.objective.md`: `## Objective` (outcome and why, 1 to 5 lines), `## Scope` (in / out), `## Sources` (requirement docs as relative links), `## Done when` (observable, checkable criteria for the whole plan, including the final verification command).
+
+`plan.constraint_invariant.md`: one bullet per rule every task must respect: behavior to preserve, forbidden actions (live DB migration, shared infrastructure), compatibility, security. Include the verification environment (see "Verification environment" below).
+
+`plan.approach.md`: `## Current state` (verified findings with file paths), `## Design` (decisions with a one-line rationale), `## Phases` (one `### phase_<n>: <title>` entry per phase file: deliverable and why it is a sync barrier). `plan_validate` warns on a phase file with no entry here.
+
+`plan.risk.md`: `## Risks` (risk, mitigation), `## Open questions` (each blocking or not, and who answers).
+
+On any later change, update `Last updated:` and append one changelog line in `plan.md`.
+
+## Planning order
+
+1. Investigate, then write the four topic files and `plan.md`. Resolve or ask open questions that change scope before going further.
+2. Derive phases and tasks from `plan.approach.md` `## Phases`; every phase file has an entry there and every task serves its phase's deliverable. Copy the constraints a task must honor into its `details.contract`, because workers never read plan files.
+3. When resuming planning in a new session, or after the user edited the plan files, read `plan.approach.md` and `plan.constraint_invariant.md` before writing tasks. Do not re-read files you just wrote in this session.
+
+Do not stop for approval between steps 1 and 2 unless an open question blocks the approach.
 
 ## Task JSON contract
 
@@ -146,22 +159,20 @@ Default shape:
 - Every task that can run concurrently with another must declare `files`.
 - Tasks that may run at the same time must not own the same file. `plan_validate` fails on overlaps; fix by adding `pre_request` or moving the shared file to one task.
 - Hotspot files touched by many slices (`package.json`, lockfiles, barrel `index` files, route/DI registries, migration numbering, shared config) belong to the foundation task or the closing task, never to several fan-out tasks.
-- Migrations are owned by exactly one task, named in that task's `files`. Every other task's Files section must list migrations under "must not be touched".
+- Migrations are owned by exactly one task, named in that task's `files`. Every other task states in `details.contract` that migrations must not be touched.
 
 ### 3. Detail is a self-contained context packet
 
-A sub agent starts with no memory of the conversation or `plan.md`. Every `detail` uses these labeled sections (`Contract` may be omitted only when no interface is involved; `plan_validate` warns on the others):
+A sub agent starts with no memory of the conversation or the plan files. Every task carries a `details` object (`contract` may be empty only when no interface is involved; `plan_validate` warns on the others):
 
-```text
-Goal: one or two sentences of intended outcome.
-Files: files to modify (mirror `files`) and files that must not be touched.
-Contract: exact signatures, types, schemas, endpoints, or names to honor; paste them, do not reference.
-Steps: concrete ordered steps with every design decision already made.
-Verify: exact commands to run and the expected result.
-Done when: observable acceptance criteria.
-```
+- `goal`: one or two sentences of intended outcome. Nothing else.
+- `contract`: exact signatures, types, schemas, endpoints, or names to honor; paste them, do not reference. Also files that must not be touched.
+- `steps`: array of concrete ordered steps with every design decision already made. One action per entry; never pack several actions into one string with `;`.
+- `verify`: exact commands to run and the expected result, plus observable acceptance criteria (`Done when: ...`).
 
-No "see plan.md", no "decide the best approach", no "similar to TASK-003". If a decision is open, resolve it during planning or ask the user.
+Owned files go only in the task's `files` array. Never write a `Files:` section into `details` (goal, contract, steps, or verify): it duplicates `files`, drifts from it, and `plan_validate` warns on it. `ppm task_get` already prints the owned files for the worker.
+
+No "see plan.approach.md", no "decide the best approach", no "similar to TASK-003". If a decision is open, resolve it during planning or ask the user.
 
 Packet size is a sizing signal, not just a quality rule:
 
@@ -198,7 +209,7 @@ Set `agent` on every task. Use `explore` only when an investigation result is a 
 
 ### 7. Verification environment
 
-Before writing any `verify` step, determine and record in `plan.md` section 8:
+Before writing any `verify` step, determine and record in `plan.constraint_invariant.md`:
 
 - Which database, service, or sandbox the verify commands run against, and whether it is the live one or an isolated test one.
 - Which migrations, seed data, or schema changes must already exist for the commands to pass, and which task provides them.
@@ -212,7 +223,7 @@ Rules:
 
 ## Required planning deliverables
 
-Produce `plan.md` and one phase (built with `task_upsert`) per ordered phase. Include actionable tasks, dependencies, acceptance or verification criteria, risks and mitigations, unresolved questions, and a definition of done. Confirm all files are inside the intended project and referenced paths exist.
+Produce the five plan files and one phase (built with `task_upsert`) per `plan.approach.md` phase entry, with actionable tasks, dependencies, and verification criteria. Confirm all files are inside the intended project and referenced paths exist.
 
 After the phases are written, run both commands and iterate until `plan_validate` prints `Plan valid` with no errors:
 
@@ -221,7 +232,7 @@ ppm plan_validate --plan <plan-name> [--project <project-path>]
 ppm plan_waves --plan <plan-name> [--project <project-path>]
 ```
 
-- `plan_validate` errors (schema, cycles, concurrent file overlap, empty phase, missing `plan.md`) must be fixed. Warnings (serial phase, missing ownership, missing context-packet sections, no closing task, no agent hint, task over the sizing limits, missing `size`, `size: L`, closing task over its limits) should be fixed or justified in the report. `--strict` treats warnings as errors.
+- `plan_validate` errors (schema, cycles, concurrent file overlap, empty phase, missing plan file) must be fixed. Warnings (serial phase, missing ownership, missing context-packet sections, no closing task, no agent hint, task over the sizing limits, missing `size`, `size: L`, closing task over its limits) should be fixed or justified in the report. `--strict` treats warnings as errors.
 - `plan_waves` shows waves per phase, critical path, peak width, and average parallelism. If most waves have width 1, or the critical path equals the task count, first remove false dependencies and split tasks that hide independent work. **Never merge tasks or phases, and never enlarge a task, just to improve these numbers.** A narrow plan of small tasks is acceptable; a wide plan of oversized tasks is not.
 
 Report changed files, unresolved questions, and the final `plan_validate` and `plan_waves` output as verification.
@@ -233,7 +244,7 @@ These notes are written into the plan so the executor does not have to improvise
 - One task ID is dispatched to one worker at a time. Never split a single task between two workers with an ad hoc ownership division; if a task needs splitting, update the plan and add new task IDs.
 - Workers modify only files in their task's `files`. A worker that needs to change another file stops and reports it instead of editing.
 - If a worker returns "partial" or no code, do not re-dispatch the same task unchanged. Split it into smaller tasks in the plan first, then dispatch the new tasks.
-- Record the commit or `HEAD` the plan was written against in `plan.md` section 3. If `HEAD` moves during execution, the orchestrator re-checks affected tasks before dispatching more work.
+- Record the commit or `HEAD` the plan was written against as `Base commit:` in `plan.md`. If `HEAD` moves during execution, the orchestrator re-checks affected tasks before dispatching more work.
 
 ## Supporting commands
 

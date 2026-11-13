@@ -8,7 +8,7 @@ Works with OpenCode, Claude Code, Codex, and any Agent Skills-compatible client.
 
 ## Features
 
-- **Structured plans**: `plan.md` plus one JSON file per phase under `<project>/.ppm/<plan>/`.
+- **Structured plans**: small plan files under `<project>/.ppm/<plan>/` (`plan.md` metadata + changelog, `plan.objective.md`, `plan.constraint_invariant.md`, `plan.approach.md`, `plan.risk.md`) so agents read only what they need, plus one JSON file per phase.
 - **Parallel-aware scheduling**: phases are sync barriers; tasks inside a phase run in waves driven by `pre_request` dependencies.
 - **File ownership**: each task declares the files it may modify. `plan_validate` rejects plans where concurrent tasks own the same file.
 - **Sub-agent role hints**: `agent: explore | implement | review | verify` lets the orchestrator pick the right worker.
@@ -101,18 +101,18 @@ A phase file looks like this:
       "title": "Users endpoint",
       "agent": "implement",
       "files": ["src/users/"],
-      "detail": "Goal: ...\nFiles: ...\nContract: ...\nSteps: ...\nVerify: npm test\nDone when: ...",
+      "details": { "goal": "...", "contract": "...", "steps": ["...", "..."], "verify": "npm test; Done when: ..." },
       "status": "todo",
-      "progress": ""
+      "progress": []
     },
     {
       "id": "API-3",
       "title": "Register routes and run suite",
       "agent": "verify",
       "files": ["src/routes.ts"],
-      "detail": "...",
+      "details": { "goal": "...", "contract": "", "steps": ["..."], "verify": "..." },
       "status": "todo",
-      "progress": "",
+      "progress": [],
       "pre_request": ["API-1"]
     }
   ]
@@ -154,7 +154,7 @@ ppm plan_status --plan <name> [--project <path>]
 ppm plan_waves --plan <name> [--project <path>]
 ```
 
-- `plan_validate` errors on schema problems, `pre_request` cycles, concurrent tasks owning overlapping `files`, empty phases, and a missing `plan.md`. It warns on serial phases, missing ownership, incomplete task context, missing closing task, and missing `agent` hints. `--strict` turns warnings into errors.
+- `plan_validate` errors on schema problems, `pre_request` cycles, concurrent tasks owning overlapping `files`, empty phases, and a missing plan file. It warns on a legacy single-file `plan.md`, phases not described in `plan.approach.md`, serial phases, missing ownership, incomplete task context, missing closing task, and missing `agent` hints. `--strict` turns warnings into errors.
 - `plan_status` prints `done/total` per phase, lists in-progress and failed task IDs, and names the current phase.
 - `plan_waves` prints the wave schedule, critical path, peak width, and average parallelism.
 
@@ -182,9 +182,9 @@ ppm task_remove --plan <name> --phase <phase_x> --task-id <id> [--force]        
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id`, `title`, `detail` | yes | Stable ID, short title, self-contained context packet (`Goal`, `Files`, `Contract`, `Steps`, `Verify`, `Done when`) |
+| `id`, `title`, `details` | yes | Stable ID, short title, self-contained context packet `{ goal, contract, steps[], verify }`. Owned paths go in `files`, never in `details`. |
 | `status` | yes | `todo`, `in_progress`, `completed`, or `fail` |
-| `progress` | yes | Execution log (may be `""`) |
+| `progress` | yes | Execution log: array of `{ time, detail }` (may be `[]`) |
 | `pre_request` | no | IDs in the same phase that must be `completed` first |
 | `files` | no | Write ownership: repo-relative paths or globs. A literal path also covers everything under it. |
 | `agent` | no | `explore`, `implement`, `review`, or `verify` |

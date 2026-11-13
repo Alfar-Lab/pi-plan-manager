@@ -18,7 +18,7 @@
   var host = window.parent !== window;
 
   // ============== state ==============
-  var state = { data: null, project: "", query: "", filter: "all", open: new Map(), waveTab: new Map(), cwd: params.get("cwd") || "" };
+  var state = { data: null, project: "", query: "", filter: "all", sort: "completion", open: new Map(), waveTab: new Map(), cwd: params.get("cwd") || "" };
 
   // ============== host bridge ==============
   function sendHost(message) {
@@ -120,6 +120,16 @@
   function byCompletion(a, b) {
     return a.percent - b.percent;
   }
+  // Dates are "YYYY-MM-DD" strings from plan.md, so string order == date order. Newest first, missing last.
+  function byDateDesc(a, b) {
+    return a === b ? 0 : !a ? 1 : !b ? -1 : a < b ? 1 : -1;
+  }
+  var PLAN_SORT = {
+    completion: function (a, b) { return byCompletion(a.planStats, b.planStats); },
+    name: function (a, b) { return a.plan.name.localeCompare(b.plan.name); },
+    created: function (a, b) { return byDateDesc(a.plan.createdAt, b.plan.createdAt); },
+    updated: function (a, b) { return byDateDesc(a.plan.lastUpdated, b.plan.lastUpdated); },
+  };
   function isOpen(key, fallback) {
     return state.open.has(key) ? state.open.get(key) : fallback;
   }
@@ -341,7 +351,7 @@
     var plans = project.plans
       .map(function (plan) { return { plan: plan, planStats: stats(plan.phases) }; })
       .filter(function (entry) { return state.filter === "all" || completionClass(entry.planStats.percent) === state.filter; })
-      .sort(function (a, b) { return byCompletion(a.planStats, b.planStats); })
+      .sort(function (a, b) { return PLAN_SORT[state.sort](a, b) || a.plan.name.localeCompare(b.plan.name); })
       .map(function (entry) { return Plan({ plan: entry.plan, planStats: entry.planStats, projectId: project.id, query: query }); })
       .filter(Boolean)
       .join("");
@@ -403,6 +413,7 @@
   // ============== event handlers ==============
   document.querySelector("#project").addEventListener("change", function (event) { state.project = event.target.value; render(); });
   document.querySelector("#plan-filter").addEventListener("change", function (event) { state.filter = event.target.value; render(); });
+  document.querySelector("#plan-sort").addEventListener("change", function (event) { state.sort = event.target.value; render(); });
   document.querySelector("#search").addEventListener("input", function (event) { state.query = event.target.value; render(); });
   document.querySelector("#refresh").addEventListener("click", load);
   document.querySelector("#content").addEventListener("click", function (event) {
@@ -420,8 +431,8 @@
       sendHost({ type: "pi-web:open-file", path: openButton.dataset.path });
       return;
     }
-    document.querySelector("#modal-title").textContent = (plan ? plan.name : "Plan") + " — plan.md";
-    document.querySelector("#modal-content").textContent = (plan && plan.content) || "plan.md not found or empty.";
+    document.querySelector("#modal-title").textContent = (plan ? plan.name : "Plan") + " — plan";
+    document.querySelector("#modal-content").textContent = (plan && plan.content) || "Plan files not found or empty.";
     document.querySelector("#plan-modal").showModal();
   });
   document.querySelector("#modal-close").addEventListener("click", function () { document.querySelector("#plan-modal").close(); });

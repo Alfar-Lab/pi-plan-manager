@@ -9,6 +9,7 @@ const {
 	assertSafeSegment,
 	projectRoot,
 	readPhase,
+	readPhaseFile,
 	writePhase,
 	validatePhase,
 	listPhaseNames,
@@ -16,6 +17,7 @@ const {
 	normalizeDetails,
 } = require("../_shared/phase");
 const { waves, criticalPath, lintPhase } = require("../_shared/analysis");
+const { PLAN_DOCS, LEGACY_PLAN_MD } = require("../_shared/patterns");
 
 function resolvePlanRoot(options) {
 	assertSafeSegment(options.plan, "plan name", PLAN_PATTERN);
@@ -329,16 +331,27 @@ function planValidateHandler(options) {
 	const { planRoot, names } = planPhases(options);
 	const errors = [];
 	const warnings = [];
-	if (!fs.existsSync(path.join(planRoot, "plan.md"))) errors.push("plan.md: missing");
+	const readDoc = (file) => { try { return fs.readFileSync(path.join(planRoot, file), "utf8"); } catch { return null; } };
+	const planMd = readDoc("plan.md");
+	const approach = readDoc("plan.approach.md");
+	if (planMd === null) errors.push("plan.md: missing");
+	const missingDocs = PLAN_DOCS.filter((file) => readDoc(file) === null);
+	// Legacy single-file plans keep executing; the adjustment flow splits them.
+	if (missingDocs.length && LEGACY_PLAN_MD.test(planMd ?? "")) warnings.push("plan.md: legacy single-file format; split it into plan.*.md via the adjustment flow");
+	else errors.push(...missingDocs.map((file) => `${file}: missing`));
 	if (!names.length) errors.push("tasks/: no phase_*.json files");
+	// Traceability: every phase is derived from a phase entry in plan.approach.md.
+	if (approach !== null) for (const name of names) if (!approach.includes(name)) warnings.push(`${name}: not described in plan.approach.md`);
 	let taskCount = 0;
 	for (const name of names) {
-		let phase;
-		try { phase = readPhase(path.join(planRoot, "tasks", `${name}.json`), name); } catch (error) {
+		let phase, legacyTasks;
+		try { ({ phase, legacyTasks } = readPhaseFile(path.join(planRoot, "tasks", `${name}.json`), name)); } catch (error) {
 			errors.push(`${name}: ${error.message}`);
 			continue;
 		}
 		taskCount += phase.tasks.length;
+		// Raw file differs from the normalized contract (legacy strings, "Files:" in details.goal, packed ";" steps).
+		if (legacyTasks) warnings.push(`${name}: ${legacyTasks} task(s) not in current details format (e.g. a "Files:" section in goal or several actions in one step); run ppm migrate_format --plan ${options.plan}`);
 		const lint = lintPhase(phase);
 		errors.push(...lint.errors.map((message) => `${name}: ${message}`));
 		warnings.push(...lint.warnings.map((message) => `${name}: ${message}`));

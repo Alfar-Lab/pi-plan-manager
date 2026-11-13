@@ -16,6 +16,21 @@ Keep this output as the baseline. Record the completed count per phase.
 
 - Any task `in_progress`: stop and ask the user to let it finish or approve `ppm task_reset` for it. Never restructure under a running worker.
 - Back up before editing: `cp -r <project-path>/.ppm/<name>/tasks <project-path>/.ppm/<name>/tasks.bak-YYYYMMDD` (`.ppm/` is often not in git).
+- Read `plan.approach.md` and `plan.constraint_invariant.md` before reworking tasks; reworked tasks must still serve an approach phase and honor every constraint.
+
+### Legacy single-file plan.md
+
+If `plan_validate` warns `plan.md: legacy single-file format`, split it first, as described in planning-flow.md "Plan documents". Copy `plan.md` to `plan.md.bak-YYYYMMDD`, then move content without rewriting it:
+
+| Old section | New file |
+|---|---|
+| 1. Objective, 2. Source documents, 9. Definition of done | `plan.objective.md` (`## Done when` from 9) |
+| 4. Constraints and invariants, 8. Verification strategy | `plan.constraint_invariant.md` |
+| 3. Current-state findings, 5. Proposed approach, 6. Dependencies | `plan.approach.md` (add a `### phase_<n>` entry per phase file) |
+| 7. Risks and mitigations, open questions | `plan.risk.md` |
+| title, `Created`, `Last updated`, base commit, any Adjustment log | `plan.md` (adjustment log entries become `## Changelog` lines) |
+
+Drop text that only repeats task `details`. Re-run `plan_validate` until the warning is gone.
 
 ## 2. What may change
 
@@ -48,17 +63,10 @@ Iterate until all hold:
 
 ## 5. Record
 
-Append to `plan.md` and update its `Last updated:` date:
+Update `plan.approach.md` `## Phases` to match the reworked phases. Then update `Last updated:` in `plan.md` and append under `## Changelog`:
 
 ```markdown
-## Adjustment log
-
-### YYYY-MM-DD
-- Reason: ...
-- Frozen: phase_0, phase_1 (tasks 1.1, 1.2)
-- Reworked: ...
-- ID map: 1.3 -> 1.3a, 1.3b; 2.1 removed (merged into 2.4)
-- Backup: tasks.bak-YYYYMMDD
+- YYYY-MM-DD: adjusted. Reason: ... Frozen: phase_0, phase_1 (1.1, 1.2). Reworked: ... ID map: 1.3 -> 1.3a, 1.3b; 2.1 removed (merged into 2.4). Backup: tasks.bak-YYYYMMDD
 ```
 
 ## 6. Report

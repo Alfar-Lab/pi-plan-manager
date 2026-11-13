@@ -41,7 +41,19 @@ const p1 = ["--plan", "demo", "--phase", "phase_1"];
 async function main() {
 	fs.mkdirSync(project);
 	ok("init", "--plan", "demo");
-	fs.writeFileSync(path.join(project, ".ppm", "demo", "plan.md"), "# Demo\n");
+	const planDir = path.join(project, ".ppm", "demo");
+	const docs = ["plan.md", "plan.objective.md", "plan.constraint_invariant.md", "plan.approach.md", "plan.risk.md"];
+	for (const doc of docs) fs.writeFileSync(path.join(planDir, doc), `# ${doc}\nphase_0 phase_1\n`);
+	// Split plan docs: missing topic file is an error; legacy single-file plan.md only warns; phases trace to approach.
+	fs.unlinkSync(path.join(planDir, "plan.risk.md"));
+	writePhase("phase_0", [task("A")]);
+	bad(/plan\.risk\.md: missing/, "plan_validate", "--plan", "demo");
+	fs.writeFileSync(path.join(planDir, "plan.md"), "# Demo\n\n## 1. Objective\n");
+	assert.match(ok("plan_validate", "--plan", "demo"), /plan\.md: legacy single-file format/);
+	for (const doc of docs) fs.writeFileSync(path.join(planDir, doc), `# ${doc}\nphase_0 phase_1\n`);
+	writePhase("phase_7", [task("A")]);
+	assert.match(ok("plan_validate", "--plan", "demo"), /phase_7: not described in plan\.approach\.md/);
+	fs.unlinkSync(path.join(tasksDir, "phase_7.json"));
 
 	// plan_validate: cycle and unknown dependency are reported, valid plan passes.
 	writePhase("phase_0", [task("A", { pre_request: ["B"] }), task("B", { pre_request: ["A"] })]);
@@ -122,15 +134,26 @@ async function main() {
 	assert.match(readTasks("phase_1")[0].progress[1].detail, /retry/);
 	assert.equal("fail_desc" in readTasks("phase_1")[0], false);
 
-	// Legacy detail parser: labels only at line start, preamble/Files stay in goal, Done when kept in verify.
+	// Legacy detail parser: labels only at line start; Files block leaves goal (task.files owns paths) and is kept as contract "Scope:"; Done when kept in verify.
 	const { parseLegacyDetail } = require("../bin/commands/_shared/phase");
 	assert.deepEqual(parseLegacyDetail("Goal: g\nFiles: a.ts\nContract: see Steps: below\nSteps:\n1. one\n2) two\n- three\n   a. sub\nVerify: npm test\nDone when: green"), {
-		goal: "g\nFiles: a.ts",
-		contract: "see Steps: below",
+		goal: "g",
+		contract: "Scope: a.ts\nsee Steps: below",
 		steps: ["one", "two", "three", "a. sub"],
 		verify: "npm test\nDone when: green",
 	});
+	assert.equal(parseLegacyDetail("Goal: g\nContract (types.ts):\nexport type T = 1;").contract, "Contract (types.ts): export type T = 1;");
 	assert.deepEqual(parseLegacyDetail("free text, no labels"), { goal: "free text, no labels", contract: "", steps: [], verify: "" });
+
+	// New-format goal carrying a "Files:" block is cleaned the same way; plan_validate warns if one remains anywhere in details.
+	const { normalizeDetails } = require("../bin/commands/_shared/phase");
+	const filesInGoal = { details: { goal: "Do X.\nFiles (owned): a.ts; do not touch b.ts", contract: "C", steps: ["s"], verify: "v" } };
+	normalizeDetails(filesInGoal);
+	const filesWarn = (lint) => lint.warnings.some((w) => /W: details contains a "Files:" section/.test(w));
+	const { lintPhase } = require("../bin/commands/_shared/analysis");
+	assert.equal(filesWarn(lintPhase({ tasks: [{ id: "W", details: { goal: "g", contract: "", steps: ["Files: x"], verify: "v" } }] })), true);
+	assert.equal(filesWarn(lintPhase({ tasks: [{ id: "W", details: { goal: "g", contract: "", steps: ["s"], verify: "v" } }] })), false);
+	assert.deepEqual(filesInGoal.details, { goal: "Do X.", contract: "Scope (owned): a.ts; do not touch b.ts\nC", steps: ["s"], verify: "v" });
 
 	// A lone "a; b" step is split; ";" inside `code` or brackets is kept; multi-step lists untouched.
 	const { splitSteps } = require("../bin/commands/_shared/phase");
@@ -141,6 +164,7 @@ async function main() {
 	// migrate_format: dry-run writes nothing; real run backs up, rewrites legacy tasks only, is idempotent.
 	writePhase("phase_1", [task("D", { status: "start", detail: "Goal: g\nSteps:\n1. s\nVerify: v", progress: "[2026-01-01T00:00:00Z] did", fail_desc: "boom" })]);
 	const rawBefore = fs.readFileSync(path.join(tasksDir, "phase_1.json"), "utf8");
+	assert.match(ok("plan_validate", "--plan", "demo"), /phase_1: 1 task\(s\) not in current details format/);
 	assert.match(ok("migrate_format", "--plan", "demo", "--dry-run"), /^Would migrate 1 phase file\(s\), 1 task\(s\) in plan demo\.\nphase_1\n$/);
 	assert.equal(fs.readFileSync(path.join(tasksDir, "phase_1.json"), "utf8"), rawBefore);
 	const migrated = ok("migrate_format", "--plan", "demo");
@@ -182,8 +206,11 @@ async function main() {
 	bad(/agent must be one of/, "plan_validate", "--plan", "demo");
 
 	// Concurrent file overlap is an error; ordering via pre_request resolves it.
-	const packet = "Goal: g\nFiles: f\nSteps: s\nVerify: v\nDone when: d";
-	const t = (id, extra) => task(id, { detail: packet, agent: "implement", ...extra });
+	// Current-format packet (no detail string, no "Files:" in details) so "well-formed" means no warnings.
+	const t = (id, extra) => {
+		const { detail, ...rest } = task(id, { agent: "implement", progress: [], details: { goal: "g", contract: "", steps: ["s"], verify: "v" }, ...extra });
+		return rest;
+	};
 	writePhase("phase_1", [t("E", { files: ["src/shared.ts"] }), t("F", { files: ["src/**"] })]);
 	bad(/E and F can run concurrently but share files/, "plan_validate", "--plan", "demo");
 	writePhase("phase_1", [t("E", { files: ["src/shared.ts"] }), t("F", { files: ["src/**"], pre_request: ["E"] })]);
@@ -262,6 +289,8 @@ async function dashboardChecks() {
 		assert.ok(Array.isArray(phase.criticalPath));
 		// phase_2 holds one legacy-format task, so the Reformat button must show.
 		assert.equal(JSON.parse(okResponse.body).projects[0].plans[0].legacyTasks, 1);
+		// Modal content concatenates plan.md and every plan.*.md topic file.
+		assert.match(JSON.parse(okResponse.body).projects[0].plans[0].content, /# plan\.md[^]*<!-- plan\.objective\.md -->[^]*<!-- plan\.risk\.md -->/);
 		// Reformat button endpoint: CSRF header required, then migrates in code and the count drops to 0.
 		const host = `127.0.0.1:${port}`;
 		const migrateUrl = `/api/migrate_format?project=${encodeURIComponent(fs.realpathSync(project))}&plan=demo`;

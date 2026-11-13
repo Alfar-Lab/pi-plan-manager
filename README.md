@@ -1,8 +1,8 @@
-# Project Plan Manager
+# Pi Plan Manager
 
 Agent Skill and zero-dependency CLI (`ppm`) for planning, executing, and auditing multi-phase project plans with AI coding agents, designed for orchestrators that dispatch work to parallel sub agents.
 
-Works with OpenCode, Claude Code, Codex, and any Agent Skills-compatible client.
+Works with pi (native tool + pi-web panel), OpenCode, Claude Code, Codex, and any Agent Skills-compatible client.
 
 ![Dashboard](assets/Example.png)
 
@@ -29,16 +29,16 @@ Works with OpenCode, Claude Code, Codex, and any Agent Skills-compatible client.
 ### pi (native tool)
 
 ```bash
-pi install git:github.com/alfahluzi/project-plan-manager
+pi install git:github.com/Alfar-Lab/pi-plan-manager
 ```
 
-Registers the `ppm` tool and the `project-plan-manager` skill. No `npm link` or PATH setup needed. Tool params mirror CLI flags: `ppm({ op: "task_get", plan: "demo", phase: "phase_0", task_id: "API-1" })`.
+Registers the `ppm` tool, the `pi-plan-manager` skill, and the pi-web **Project Plan** panel. No `npm link` or PATH setup needed. For development, install a local checkout instead: `pi install ./path/to/pi-plan-manager`. Tool params mirror CLI flags: `ppm({ op: "task_get", plan: "demo", phase: "phase_0", task_id: "API-1" })`.
 
 ### One-shot installer (Linux/macOS, WSL, Git Bash)
 
 ```bash
-git clone https://github.com/alfahluzi/project-plan-manager.git
-cd project-plan-manager
+git clone https://github.com/Alfar-Lab/pi-plan-manager.git
+cd pi-plan-manager
 ./install.sh                     # OpenCode (default), copy mode
 ./install.sh --client claude     # Claude Code
 ./install.sh --client codex      # Codex
@@ -52,19 +52,20 @@ The installer copies the skill into the client's skills directory and runs `npm 
 
 | Client | Skills directory |
 |---|---|
-| OpenCode | `~/.config/opencode/skills/project-plan-manager` |
-| Claude Code | `~/.claude/skills/project-plan-manager` |
-| Codex | `~/.agents/skills/project-plan-manager` |
+| OpenCode | `~/.config/opencode/skills/pi-plan-manager` |
+| Claude Code | `~/.claude/skills/pi-plan-manager` |
+| Codex | `~/.agents/skills/pi-plan-manager` |
+| Pi | `~/.pi/agent/skills/pi-plan-manager` |
 
 ### Manual installation
 
 ```bash
-git clone https://github.com/alfahluzi/project-plan-manager.git ~/.claude/skills/project-plan-manager
-cd ~/.claude/skills/project-plan-manager
+git clone https://github.com/Alfar-Lab/pi-plan-manager.git ~/.claude/skills/pi-plan-manager
+cd ~/.claude/skills/pi-plan-manager
 npm link
 ```
 
-For other clients, clone into the client's configured skills directory, keeping the folder name `project-plan-manager`, then run `npm link`.
+For other clients, clone into the client's configured skills directory, keeping the folder name `pi-plan-manager`, then run `npm link`.
 
 If `command -v ppm` (Windows: `where ppm`) prints nothing, add npm's global bin directory to `PATH`: `<prefix>/bin` on Unix/macOS, where `<prefix>` is the output of `npm prefix -g`. Restart the terminal and the agent client afterwards.
 
@@ -73,16 +74,16 @@ If `command -v ppm` (Windows: `where ppm`) prints nothing, add npm's global bin 
 To make the agent use this skill automatically for planning, execution, and audits, add this block to your client's **user-level** `AGENTS.md` (or ask the agent to run the installation flow, which asks before editing anything):
 
 ```markdown
-<!-- project-plan-manager:start -->
-For planning, executing/resuming, auditing, or adjusting plans, load and use the `project-plan-manager` skill. Follow its routed prompt files and use the `ppm` CLI.
-<!-- project-plan-manager:end -->
+<!-- pi-plan-manager:start -->
+For planning, executing/resuming, auditing, or adjusting plans, load and use the `pi-plan-manager` skill. Follow its routed prompt files and use the `ppm` CLI.
+<!-- pi-plan-manager:end -->
 ```
 
 ## Quickstart
 
 Ask your agent, for example:
 
-- "Plan adding OAuth login using project-plan-manager"
+- "Plan adding OAuth login using pi-plan-manager"
 - "Audit plan oauth-login"
 - "Execute plan oauth-login"
 - "Adjust plan oauth-login to the current plan format" (for plans created before v2)
@@ -194,6 +195,8 @@ ppm task_remove --plan <name> --phase <phase_x> --task-id <id> [--force]        
 ```bash
 ppm dashboard_serve            # http://127.0.0.1:4173/index.html (or /task.html)
 ```
+
+In pi-web, the same view is available as the **Project Plan** panel (`panel/index.html`) without running a server.
 
 Shows every registered project (or only `--project`). Plans are sorted by completion, lowest first. Phases and tasks are collapsible, and the current phase opens by default. Buttons copy ready-made Execute/Audit prompts for your agent. The page loads Tailwind and fonts from public CDNs, so it needs internet access to render styled.
 

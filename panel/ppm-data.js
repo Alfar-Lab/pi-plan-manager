@@ -1,5 +1,5 @@
 /**
- * Browser data layer for the Project Plan Manager pi-web panel.
+ * Browser data layer for the Pi Plan Manager pi-web panel.
  *
  * The panel is a static document served from this package, so it has no server
  * of its own. It reads `.ppm` files through pi-web's generic file API

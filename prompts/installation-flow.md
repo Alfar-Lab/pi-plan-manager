@@ -14,7 +14,7 @@ If Node.js is missing or older than 18, stop and ask the user to install or sele
 
 ## 2. Install the CLI shim
 
-From the project-plan-manager skill package root, run or instruct:
+From the pi-plan-manager skill package root, run or instruct:
 
 ```bash
 npm link
@@ -48,7 +48,7 @@ Restart the shell and agent client after a PATH change or installation so both r
 
 Ask this exact question:
 
-> Apakah Anda ingin skill Project Plan Manager otomatis digunakan untuk permintaan planning, execution, dan plan audit?
+> Apakah Anda ingin skill Pi Plan Manager otomatis digunakan untuk permintaan planning, execution, dan plan audit?
 
 If the answer is no, stop. Do not inspect for the purpose of editing, create, or modify any `AGENTS.md`.
 
@@ -61,9 +61,9 @@ Identify the actual user-level `AGENTS.md` loaded by the current client and envi
 Inspect the existing target file before editing. Preserve all existing content. Never overwrite the file. The only permitted change is one bounded, idempotent section:
 
 ```markdown
-<!-- project-plan-manager:start -->
-For planning, executing/resuming, auditing, or adjusting plans, load and use the `project-plan-manager` skill. Follow its routed prompt files and use the `ppm` CLI.
-<!-- project-plan-manager:end -->
+<!-- pi-plan-manager:start -->
+For planning, executing/resuming, auditing, or adjusting plans, load and use the `pi-plan-manager` skill. Follow its routed prompt files and use the `ppm` CLI.
+<!-- pi-plan-manager:end -->
 ```
 
 If the bounded section already exists, update that section in place only when needed; do not add a duplicate. If markers are malformed or overlap unrelated content, ask the user before changing it.

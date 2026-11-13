@@ -51,12 +51,12 @@ export default function (pi: ExtensionAPI) {
 		name: "ppm",
 		label: "ppm",
 		description: [
-			"Project Plan Manager CLI as a tool. Use wherever the project-plan-manager skill says `ppm <op> --flag value`:",
+			"Pi Plan Manager CLI as a tool. Use wherever the pi-plan-manager skill says `ppm <op> --flag value`:",
 			"pass op plus flags as params (--task-id -> task_id, --progress-text -> progress_text, --dry-run -> dry_run, boolean flags -> true).",
 			...ops.map((o) => o.usage),
 			"dashboard_serve starts the dashboard in the background; confirm with op check_dashboard.",
 		].join("\n"),
-		promptSnippet: "Project Plan Manager (ppm) operations for .ppm plans, phases, and tasks",
+		promptSnippet: "Pi Plan Manager (ppm) operations for .ppm plans, phases, and tasks",
 		promptGuidelines: [
 			"Change .ppm phase task files only through the ppm tool: task_upsert/task_remove for plan content (a few tasks per call; fix one failing task, never rewrite the phase), task_* status ops and task_write_progress during execution. Never write or edit .ppm/*/tasks/*.json directly.",
 		],

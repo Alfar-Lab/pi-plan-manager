@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh - install project-plan-manager skill and link the `ppm` CLI
+# install.sh - install pi-plan-manager skill and link the `ppm` CLI
 #
 # Usage:
 #   ./install.sh [--client opencode|claude|codex|pi|all] [--mode copy|link]
@@ -14,8 +14,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_NAME="project-plan-manager"
-PACKAGE_NAME="project-plan-manager-agent-skill"
+SKILL_NAME="pi-plan-manager"
+PACKAGE_NAME="pi-plan-manager"
 
 CLIENT="opencode"
 MODE="copy"

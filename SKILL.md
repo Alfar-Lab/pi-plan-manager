@@ -1,5 +1,5 @@
 ---
-name: project-plan-manager
+name: pi-plan-manager
 description: Create, execute, and track structured project plans with phased JSON tasks, progress updates, and verification. Use for project planning, implementation plans, task breakdowns, plan execution, progress tracking, and resuming interrupted work.
 compatibility: Requires Node.js >=18 and an Agent Skills-compatible client that can execute local CLI commands.
 metadata:
@@ -7,7 +7,7 @@ metadata:
   task-format: json
 ---
 
-# Project Plan Manager
+# Pi Plan Manager
 
 Read the routed flow file in full before acting. Its instructions are mandatory; do not substitute memory or summaries.
 

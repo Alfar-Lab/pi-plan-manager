@@ -1,5 +1,5 @@
 {
-  "name": "project-plan-manager-agent-skill",
+  "name": "pi-plan-manager",
   "version": "2.0.0",
   "description": "Agent Skill and CLI for structured project plans, parallel sub-agent execution, and task progress management.",
   "keywords": ["agent-skill", "ai-agent", "claude-code", "opencode", "codex", "project-plan", "task-management", "cli", "pi-package"],
@@ -7,11 +7,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alfahluzi/project-plan-manager.git"
+    "url": "git+https://github.com/Alfar-Lab/pi-plan-manager.git"
   },
-  "homepage": "https://github.com/alfahluzi/project-plan-manager#readme",
+  "homepage": "https://github.com/Alfar-Lab/pi-plan-manager#readme",
   "bugs": {
-    "url": "https://github.com/alfahluzi/project-plan-manager/issues"
+    "url": "https://github.com/Alfar-Lab/pi-plan-manager/issues"
   },
   "type": "commonjs",
   "bin": {

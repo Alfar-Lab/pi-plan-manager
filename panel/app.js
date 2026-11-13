@@ -1,5 +1,5 @@
 /**
- * Project Plan Manager — view layer, shared by the pi-web panel and the CLI
+ * Pi Plan Manager — view layer, shared by the pi-web panel and the CLI
  * standalone dashboard (`ppm dashboard_serve`).
  *
  * This is the single source of truth for the dashboard UI. The two entry
@@ -232,10 +232,10 @@
 
   // ============== phase components ==============
   function PhaseExecPrompt(planName, phaseName) {
-    return "Execute " + planName + " only Phase " + phaseName + " using Project-Plan-Manager skill. Phases are sequential; tasks with empty pre_request are parallel-eligible. Act as orchestrator: dispatch each ppm task_ready task to a sub agent matching its agent hint, verify, then mark status.";
+    return "Execute " + planName + " only Phase " + phaseName + " using pi-plan-manager skill. Phases are sequential; tasks with empty pre_request are parallel-eligible. Act as orchestrator: dispatch each ppm task_ready task to a sub agent matching its agent hint, verify, then mark status.";
   }
   function PhaseAuditPrompt(planName, phaseName) {
-    return "Audit " + planName + " only Phase " + phaseName + " using Project-Plan-Manager skill. Report briefly";
+    return "Audit " + planName + " only Phase " + phaseName + " using pi-plan-manager skill. Report briefly";
   }
   function PhaseActions(plan, phase) {
     return '<div class="flex flex-wrap gap-2 items-center my-2">' + Button({ label: "Execute Phase", className: BUTTON_PRIMARY, dataset: { prompt: PhaseExecPrompt(plan.name, phase.name) } }) + Button({ label: "Audit Phase", dataset: { prompt: PhaseAuditPrompt(plan.name, phase.name) } }) + "</div>";
@@ -298,10 +298,10 @@
 
   // ============== plan components ==============
   function PlanExecPrompt(planName) {
-    return "Execute " + planName + " using Project-Plan-Manager skill";
+    return "Execute " + planName + " using pi-plan-manager skill";
   }
   function PlanAuditPrompt(planName) {
-    return "Audit " + planName + " using Project-Plan-Manager skill";
+    return "Audit " + planName + " using pi-plan-manager skill";
   }
   function PlanActions(plan) {
     var armed = state.armed && state.armed.plan === plan.name && state.armed.until > Date.now();

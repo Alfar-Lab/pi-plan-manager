@@ -31,7 +31,7 @@ The plan layout is:
 - Make phases ordered, dependency-aware, independently verifiable, and traceable to deliverables.
 - Link source requirements and related project documentation with relative paths.
 - Include `Last updated: YYYY-MM-DD` in maintained Markdown files.
-- Directly write newly created phase JSON during planning when needed; execution must use the CLI for task data.
+- Write phase task data only through `ppm task_upsert` / `ppm task_remove`, never by writing or editing phase JSON files (see "Writing tasks" below). Execution uses the status and progress commands.
 - Inspect the execution environment before writing any `verify` step (see "Verification environment" below). A plan whose verify commands cannot pass in the real environment is an invalid plan.
 
 ## Mandatory plan.md format
@@ -93,6 +93,27 @@ Each `tasks/phase_x.json` uses:
   ]
 }
 ```
+
+This is the stored shape. You never write it by hand: `task_upsert` creates the file, sets `phase`, `status: "todo"`, and `progress: []`.
+
+### Writing tasks
+
+Build each phase incrementally, a few tasks per call, so a mistake costs one task, not a rewrite of the phase:
+
+```bash
+ppm task_upsert --plan <plan-name> --phase phase_0 --title "Phase title" --task - <<'EOF'
+[
+  { "id": "TASK-001", "title": "...", "agent": "implement", "size": "S", "files": ["src/a.ts"],
+    "details": { "goal": "...", "contract": "...", "steps": ["..."], "verify": "..." } }
+]
+EOF
+```
+
+- `--task` takes one task object or an array (keep it to about 3 to 5 tasks). `--task -` reads stdin; use a quoted heredoc (`<<'EOF'`) so `$`, backticks, and quotes need no escaping. In pi, pass the object directly as the `task` param of the `ppm` tool.
+- Same `id` again = JSON merge patch: send only the fields that change (`details` merges per key; arrays such as `steps`, `files`, `pre_request` are replaced whole; `null` deletes a field). Never resend unchanged tasks.
+- Errors name the failing task (`task TASK-003.pre_request ...`) and nothing is written. Fix by re-sending only that task. Add tasks before the tasks whose `pre_request` references them.
+- Each call prints task-level warnings; run `plan_validate` once the phase is complete for phase-level checks.
+- `ppm task_remove --task-id <id>` deletes a `todo`/`fail` task that nothing depends on. Neither command touches `in_progress`/`completed` tasks without `--force`, and neither sets `status` or `progress`.
 
 Invariants:
 
@@ -191,9 +212,9 @@ Rules:
 
 ## Required planning deliverables
 
-Produce `plan.md` and one phase JSON file per ordered phase. Include actionable tasks, dependencies, acceptance or verification criteria, risks and mitigations, unresolved questions, and a definition of done. Confirm all files are inside the intended project and referenced paths exist.
+Produce `plan.md` and one phase (built with `task_upsert`) per ordered phase. Include actionable tasks, dependencies, acceptance or verification criteria, risks and mitigations, unresolved questions, and a definition of done. Confirm all files are inside the intended project and referenced paths exist.
 
-After writing or editing any phase JSON, run both commands and iterate until `plan_validate` prints `Plan valid` with no errors:
+After the phases are written, run both commands and iterate until `plan_validate` prints `Plan valid` with no errors:
 
 ```bash
 ppm plan_validate --plan <plan-name> [--project <project-path>]
@@ -224,6 +245,8 @@ ppm init --plan <plan-name> [--project <project-path>]
 ppm plan_validate --plan <plan-name> [--project <project-path>]
 ppm plan_status --plan <plan-name> [--project <project-path>]
 ppm plan_waves --plan <plan-name> [--project <project-path>]
+ppm task_upsert --plan <plan-name> --phase <phase_x> --task <json|-> [--title <title>] [--project <project-path>]
+ppm task_remove --plan <plan-name> --phase <phase_x> --task-id <id> [--project <project-path>]
 ppm migrate [--project <project-path>] [--dry-run]
 ppm clean_roots [--dry-run]
 ```

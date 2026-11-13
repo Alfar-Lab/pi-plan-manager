@@ -26,6 +26,14 @@ Works with OpenCode, Claude Code, Codex, and any Agent Skills-compatible client.
 
 ## Installation
 
+### pi (native tool)
+
+```bash
+pi install git:github.com/alfahluzi/project-plan-manager
+```
+
+Registers the `ppm` tool and the `project-plan-manager` skill. No `npm link` or PATH setup needed. Tool params mirror CLI flags: `ppm({ op: "task_get", plan: "demo", phase: "phase_0", task_id: "API-1" })`.
+
 ### One-shot installer (Linux/macOS, WSL, Git Bash)
 
 ```bash
@@ -162,6 +170,8 @@ ppm task_completed --plan <name> --phase <phase_x> --task-id <id> [--force]
 ppm task_fail --plan <name> --phase <phase_x> --task-id <id> [--force]
 ppm task_reset --plan <name> --phase <phase_x> --task-id <id> [--force]
 ppm task_write_progress --plan <name> --phase <phase_x> --task-id <id> --progress-text <text> [--replace]
+ppm task_upsert --plan <name> --phase <phase_x> --task <json|-> [--title <phase title>] [--force]  # add or merge-patch tasks by id; creates the phase file
+ppm task_remove --plan <name> --phase <phase_x> --task-id <id> [--force]                       # todo/fail task with no dependents
 ```
 
 - Status transitions: `todo|fail -> in_progress -> completed|fail`, `todo -> fail`, and `task_reset` returns any status to `todo`. `task_in_progress` also refuses tasks with unmet `pre_request` and tasks in a phase whose earlier phases are not complete. `--force` skips these guards for manual repair only.

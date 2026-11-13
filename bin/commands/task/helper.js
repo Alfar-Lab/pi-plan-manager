@@ -13,6 +13,7 @@ const {
 	validatePhase,
 	listPhaseNames,
 	withFileLock,
+	normalizeDetails,
 } = require("../_shared/phase");
 const { waves, criticalPath, lintPhase } = require("../_shared/analysis");
 
@@ -158,6 +159,90 @@ function taskWriteProgressHandler(options) {
 		}
 	});
 	process.stdout.write(`${options["task-id"]}: progress ${options.replace ? "replaced" : "appended"}\n`);
+}
+
+const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+// RFC 7396 JSON merge patch: objects merge recursively, null deletes a key, arrays and scalars replace.
+function mergePatch(target, patch) {
+	if (!isPlainObject(patch)) return patch;
+	const out = isPlainObject(target) ? { ...target } : {};
+	for (const [key, value] of Object.entries(patch)) {
+		if (value === null) delete out[key];
+		else out[key] = mergePatch(out[key], value);
+	}
+	return out;
+}
+
+// "-" reads stdin so shells can pass JSON through a quoted heredoc without escaping.
+function parseTaskInput(raw) {
+	const text = raw === "-" ? fs.readFileSync(0, "utf8") : raw;
+	let value;
+	try { value = JSON.parse(text); } catch (error) { throw new Error(`--task is not valid JSON: ${error.message}`); }
+	const tasks = Array.isArray(value) ? value : [value];
+	if (!tasks.length) throw new Error("--task is an empty array");
+	tasks.forEach((task, i) => {
+		if (!isPlainObject(task) || typeof task.id !== "string" || !task.id.trim()) throw new Error(`--task[${i}] must be an object with a non-empty string id`);
+	});
+	return tasks;
+}
+
+// Only unstarted or failed tasks are plan material; running and completed tasks are history.
+const EDITABLE = new Set(["todo", "fail"]);
+
+function assertEditable(task, options) {
+	if (!EDITABLE.has(task.status) && !options.force)
+		throw new Error(`task ${task.id} is ${task.status}; only todo/fail tasks can be changed (use --force to override)`);
+}
+
+// Add or merge-patch tasks in one phase file (created on first use). One task per failure, not a whole-file rewrite.
+function taskUpsertHandler(options) {
+	const patches = parseTaskInput(options.task);
+	const planRoot = resolvePlanRoot(options);
+	if (!fs.existsSync(planRoot)) throw new Error(`plan not found: ${planRoot} (run ppm init --plan ${options.plan} first)`);
+	const taskFile = resolveTaskFile(options);
+	fs.mkdirSync(path.dirname(taskFile), { recursive: true });
+	const { phase, results } = withFileLock(taskFile, () => {
+		const current = fs.existsSync(taskFile) ? readPhase(taskFile, options.phase) : { phase: options.phase, title: options.phase, tasks: [] };
+		if (options.title) current.title = options.title;
+		const done = patches.map(({ status, progress, ...patch }) => {
+			const index = current.tasks.findIndex((task) => task.id === patch.id);
+			const existing = current.tasks[index];
+			if (existing) assertEditable(existing, options);
+			if (status !== undefined && status !== (existing?.status ?? "todo"))
+				throw new Error(`${patch.id}: status is set only by task_in_progress/task_completed/task_fail/task_reset; omit it`);
+			if (progress != null && progress !== "" && !(Array.isArray(progress) && !progress.length))
+				throw new Error(`${patch.id}: progress is written only by task_write_progress; omit it`);
+			const task = mergePatch(existing ?? {}, patch);
+			if (!existing) Object.assign(task, { status: "todo", progress: [] });
+			normalizeDetails(task);
+			if (index >= 0) current.tasks[index] = task;
+			else current.tasks.push(task);
+			return `${task.id}: ${existing ? "updated" : "added"}`;
+		});
+		// Name the task, not its array index, so the caller re-sends just that one.
+		try { validatePhase(current, options.phase); } catch (error) {
+			throw new Error(error.message.replace(/tasks\[(\d+)\]/g, (m, i) => `task ${current.tasks[i]?.id ?? m}`));
+		}
+		writePhase(taskFile, current);
+		return { phase: current, results: done };
+	});
+	// Task-level lint only; phase-level findings may be transient until the phase is complete (see plan_validate).
+	const ids = patches.map((patch) => `${patch.id}:`);
+	const warnings = lintPhase(phase).warnings.filter((warning) => ids.some((id) => warning.startsWith(id)));
+	process.stdout.write(`${[...results, ...warnings.map((w) => `warning: ${w}`)].join("\n")}\n${options.phase}: ${phase.tasks.length} task(s)\n`);
+}
+
+function taskRemoveHandler(options) {
+	const id = options["task-id"];
+	const left = mutatePhase(options, (phase) => {
+		assertEditable(getTask(phase, id), options);
+		const dependents = phase.tasks.filter((task) => depsOf(task).includes(id)).map((task) => task.id);
+		if (dependents.length) throw new Error(`task ${id} is in pre_request of: ${dependents.join(", ")} (upsert those first)`);
+		phase.tasks = phase.tasks.filter((task) => task.id !== id);
+		return phase.tasks.length;
+	});
+	process.stdout.write(`${id}: removed\n${options.phase}: ${left} task(s)\n`);
 }
 
 const afterNote = (task) => (depsOf(task).length ? ` (after ${depsOf(task).join(", ")})` : "");
@@ -321,6 +406,8 @@ module.exports = {
 	taskBlockedHandler,
 	taskGetHandler,
 	taskWriteProgressHandler,
+	taskUpsertHandler,
+	taskRemoveHandler,
 	setTaskStatus,
 	planValidateHandler,
 	planStatusHandler,

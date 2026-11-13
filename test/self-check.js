@@ -96,6 +96,25 @@ async function main() {
 	assert.equal(ok("task_ready", ...p0), "No ready tasks. Phase phase_0 complete. Next: phase_1\n");
 	ok("task_reset", ...p0, "--task-id", "C");
 
+	// task_upsert/task_remove: per-task edits so a mistake costs one task, not a whole phase rewrite.
+	const p9 = ["--plan", "demo", "--phase", "phase_9"];
+	const full = { title: "t", agent: "implement", files: ["x.ts"], details: { goal: "g", steps: ["s"], verify: "v" } };
+	assert.equal(ok("task_upsert", ...p9, "--title", "Nine", "--task", JSON.stringify([{ id: "U", ...full }, { id: "V", ...full, files: ["y.ts"], pre_request: ["U"] }])), "U: added\nV: added\nphase_9: 2 task(s)\n");
+	const stdin = spawnSync(process.execPath, [CLI, "task_upsert", ...p9, "--task", "-", "--project", project], { env, encoding: "utf8", input: '{"id":"V","details":{"steps":["it\'s $HOME `x`"]},"agent":null}' });
+	assert.equal(stdin.stdout, "V: updated\nwarning: V: no agent role hint (explore|implement|review|verify)\nphase_9: 2 task(s)\n", stdin.stderr);
+	const v = readTasks("phase_9")[1];
+	assert.deepEqual([v.details.goal, v.details.steps, v.agent, v.status], ["g", ["it's $HOME `x`"], undefined, "todo"]);
+	bad(/task W\.pre_request references unknown task id in same phase: Z/, "task_upsert", ...p9, "--task", '{"id":"W","title":"w","pre_request":["Z"]}');
+	bad(/status is set only by/, "task_upsert", ...p9, "--task", '{"id":"U","status":"completed"}');
+	bad(/progress is written only by/, "task_upsert", ...p9, "--task", '{"id":"U","progress":["x"]}');
+	bad(/is in pre_request of: V/, "task_remove", ...p9, "--task-id", "U");
+	ok("task_in_progress", ...p9, "--task-id", "U", "--force");
+	bad(/U is in_progress; only todo\/fail/, "task_upsert", ...p9, "--task", '{"id":"U","title":"x"}');
+	bad(/U is in_progress; only todo\/fail/, "task_remove", ...p9, "--task-id", "U");
+	assert.equal(ok("task_remove", ...p9, "--task-id", "V"), "V: removed\nphase_9: 1 task(s)\n");
+	assert.equal(JSON.parse(fs.readFileSync(path.join(tasksDir, "phase_9.json"), "utf8")).title, "Nine");
+	fs.unlinkSync(path.join(tasksDir, "phase_9.json"));
+
 	// Legacy fail_desc is folded into progress, not dropped.
 	writePhase("phase_1", [task("D", { status: "fail", fail_desc: "boom" })]);
 	ok("task_write_progress", ...p1, "--task-id", "D", "--progress-text", "retry");

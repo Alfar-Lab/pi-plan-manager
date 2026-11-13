@@ -2,7 +2,7 @@
   "name": "project-plan-manager-agent-skill",
   "version": "2.0.0",
   "description": "Agent Skill and CLI for structured project plans, parallel sub-agent execution, and task progress management.",
-  "keywords": ["agent-skill", "ai-agent", "claude-code", "opencode", "codex", "project-plan", "task-management", "cli"],
+  "keywords": ["agent-skill", "ai-agent", "claude-code", "opencode", "codex", "project-plan", "task-management", "cli", "pi-package"],
   "author": "Aldi Fahluzi",
   "license": "MIT",
   "repository": {
@@ -17,6 +17,14 @@
   "bin": {
     "ppm": "bin/ppm.js"
   },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./SKILL.md"
+    ]
+  },
   "piWeb": {
     "panels": [
       {
@@ -29,6 +37,7 @@
     ]
   },
   "files": [
+    "index.ts",
     "SKILL.md",
     "prompts/planning-flow.md",
     "prompts/execution-flow.md",
@@ -42,6 +51,18 @@
   ],
   "engines": {
     "node": ">=18"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
   },
   "scripts": {
     "check": "node test/self-check.js",

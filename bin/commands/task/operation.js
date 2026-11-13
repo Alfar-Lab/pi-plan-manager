@@ -7,6 +7,8 @@ const {
 	taskBlockedHandler,
 	taskGetHandler,
 	taskWriteProgressHandler,
+	taskUpsertHandler,
+	taskRemoveHandler,
 	setTaskStatus,
 	planValidateHandler,
 	planStatusHandler,
@@ -72,6 +74,22 @@ module.exports = [
 		usage: "ppm task_get --plan <name> --phase <phase_x> --task-id <id> [--project <path>]",
 		handler: taskGetHandler,
 		options: taskOptions,
+		required: taskIdRequired,
+	}),
+
+	createOperation({
+		name: "task_upsert",
+		usage: "ppm task_upsert --plan <name> --phase <phase_x> --task <json|-> [--title <phase title>] [--force] [--project <path>]",
+		handler: taskUpsertHandler,
+		options: ["project", "plan", "phase", "task", "title", "force"],
+		required: ["plan", "phase", "task"],
+	}),
+
+	createOperation({
+		name: "task_remove",
+		usage: "ppm task_remove --plan <name> --phase <phase_x> --task-id <id> [--force] [--project <path>]",
+		handler: taskRemoveHandler,
+		options: statusOptions,
 		required: taskIdRequired,
 	}),
 

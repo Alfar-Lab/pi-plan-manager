@@ -29,11 +29,13 @@ Keep this output as the baseline. Record the completed count per phase.
 
 Phase files stay `phase_<n>.json` with `phase` equal to the filename. Frozen phases keep their names; reworked phases may be renumbered after the last frozen one. Delete a phase file only when all its tasks were moved elsewhere.
 
-Task IDs: keep IDs of retained tasks. New tasks get new IDs; never reuse the ID of a removed task. Reset `status` to `todo` and `progress` to `""` for every new or merged task.
+Task IDs: keep IDs of retained tasks. New tasks get new IDs; never reuse the ID of a removed task. New tasks start as `todo` with empty `progress` automatically.
+
+Make every change through `ppm task_upsert` (send only the changed fields of a retained task; new tasks in full) and `ppm task_remove`, as described in planning-flow.md "Writing tasks". Do not write or edit phase JSON files. Both commands refuse `in_progress`/`completed` tasks, which protects frozen work. Upsert new tasks before removing the old ones they replace, and rewire dependents' `pre_request` first so the removal is not blocked. A `fail` task keeps its status when patched; reset it with `ppm task_reset` only when it should run again.
 
 ## 3. Rework
 
-Apply every rule in [planning-flow.md](planning-flow.md) sections "Task JSON contract" and "Designing for parallel sub-agent execution" to the reworked part: phases as sync barriers, file ownership with hotspots owned by one task, context-packet `detail`, `agent` hints, one closing task per phase, task sizing. Inspect the current source first: completed work may have changed what the remaining tasks need. Do not duplicate work already `completed`.
+Apply every rule in [planning-flow.md](planning-flow.md) sections "Task JSON contract" (including "Writing tasks") and "Designing for parallel sub-agent execution" to the reworked part: phases as sync barriers, file ownership with hotspots owned by one task, context-packet `detail`, `agent` hints, one closing task per phase, task sizing. Inspect the current source first: completed work may have changed what the remaining tasks need. Do not duplicate work already `completed`.
 
 ## 4. Verify
 

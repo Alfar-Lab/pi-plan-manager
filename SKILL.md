@@ -11,6 +11,8 @@ metadata:
 
 Read the routed flow file in full before acting. Its instructions are mandatory; do not substitute memory or summaries.
 
+In pi with the `ppm` tool available, run every `ppm <op> --flag value` command below and in the flow files through that tool (`op` plus flags as params) instead of the shell, and skip the installation flow.
+
 ## Mandatory routing
 
 - Planning, plan creation, or task breakdown: read and follow [prompts/planning-flow.md](prompts/planning-flow.md).

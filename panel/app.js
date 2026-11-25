@@ -120,13 +120,22 @@
   function byCompletion(a, b) {
     return a.percent - b.percent;
   }
-  // Dates are "YYYY-MM-DD" strings from plan.md, so string order == date order. Newest first, missing last.
+  function planTitle(plan) {
+    return plan.title || plan.name;
+  }
+  function planFileName(plan) {
+    return /[/\\]metadata\.json$/.test(plan.filePath || "") ? "metadata.json" : "plan.md";
+  }
+  function formatPlanDate(value) {
+    return window.PpmMetadata.formatMetadataTimestamp(value) || "—";
+  }
   function byDateDesc(a, b) {
-    return a === b ? 0 : !a ? 1 : !b ? -1 : a < b ? 1 : -1;
+    var first = window.PpmMetadata.metadataTimestamp(a), second = window.PpmMetadata.metadataTimestamp(b);
+    return first === second ? 0 : first === null ? 1 : second === null ? -1 : second - first;
   }
   var PLAN_SORT = {
     completion: function (a, b) { return byCompletion(a.planStats, b.planStats); },
-    name: function (a, b) { return a.plan.name.localeCompare(b.plan.name); },
+    name: function (a, b) { return planTitle(a.plan).localeCompare(planTitle(b.plan)); },
     created: function (a, b) { return byDateDesc(a.plan.createdAt, b.plan.createdAt); },
     updated: function (a, b) { return byDateDesc(a.plan.lastUpdated, b.plan.lastUpdated); },
   };
@@ -240,17 +249,9 @@
   function PhaseActions(plan, phase) {
     return '<div class="flex flex-wrap gap-2 items-center my-2">' + Button({ label: "Execute Phase", className: BUTTON_PRIMARY, dataset: { prompt: PhaseExecPrompt(plan.name, phase.name) } }) + Button({ label: "Audit Phase", dataset: { prompt: PhaseAuditPrompt(plan.name, phase.name) } }) + "</div>";
   }
-  function matches(task, query) {
-    var d = task.details || {};
-    var stepText = Array.isArray(d.steps) ? d.steps.join(" ") : "";
-    var progText = Array.isArray(task.progress) ? task.progress.map(function(p) { return p.detail; }).join(" ") : "";
-    return [task.id, task.title, d.goal, d.contract, stepText, d.verify, progText, task.status, task.agent].concat(list(task.files))
-      .some(function (value) { return String(value || "").toLowerCase().includes(query); });
-  }
   function waveOf(ctx, task) {
     return ctx.wave[task.id] || 1;
   }
-  // One tab per wave that has visible tasks; counts cover the whole wave, not just search matches.
   function WaveTabs(key, waveNums, active, phaseTasks, ctx) {
     return '<div role="tablist" class="flex flex-wrap gap-1 mt-2 border-b border-line">' + waveNums.map(function (n) {
       var waveTasks = phaseTasks.filter(function (task) { return waveOf(ctx, task) === n; });
@@ -261,16 +262,15 @@
     }).join("") + "</div>";
   }
   function PhaseSection(options) {
-    var plan = options.plan, phase = options.phase, query = options.query, projectId = options.projectId, current = options.current;
-    var tasks = phase.tasks.filter(function (task) { return !query || matches(task, query); });
-    if (query && !tasks.length) return "";
+    var plan = options.plan, phase = options.phase, projectId = options.projectId, current = options.current;
+    var tasks = phase.tasks;
     var phaseStats = stats([phase]);
     var variant = completionClass(phaseStats.percent);
     var names = plan.phases.map(function (item) { return item.name; });
     var phaseState = phase.name === current ? "current" : (current && names.indexOf(phase.name) > names.indexOf(current) ? "waiting" : "done");
     var ctx = { statusById: new Map(phase.tasks.map(function (task) { return [task.id, task.status]; })), wave: phase.wave || {}, phaseState: phaseState, current: current };
     var key = projectId + "/" + plan.name + "/" + phase.name;
-    var openAttr = (query || isOpen(key, phaseState === "current")) ? " open" : "";
+    var openAttr = isOpen(key, phaseState === "current") ? " open" : "";
     var errors = list(phase.errors), warnings = list(phase.warnings);
     var issueBadges = (errors.length ? Badge("stuck", errors.length + " error" + (errors.length === 1 ? "" : "s")) : "") + (warnings.length ? Badge("blocked", warnings.length + " warn") : "");
     var stateBadge = phaseState === "current" ? Badge("current", "current") : phaseState === "waiting" ? Badge("waiting", "waiting") : "";
@@ -298,7 +298,7 @@
 
   // ============== plan components ==============
   function PlanExecPrompt(planName) {
-    return "Execute " + planName + " using pi-plan-manager skill";
+    return "Execute " + planName + " using Project-Plan-Manager skill. Phases are sequential; tasks with empty pre_request are parallel-eligible. Act as orchestrator: dispatch each ppm task_ready task to a sub agent matching its agent hint, verify, then mark status.";
   }
   function PlanAuditPrompt(planName) {
     return "Audit " + planName + " using pi-plan-manager skill";
@@ -306,21 +306,20 @@
   function PlanActions(plan) {
     var armed = state.armed && state.armed.plan === plan.name && state.armed.until > Date.now();
     var reformat = plan.legacyTasks ? Button({ label: armed ? "Click again to rewrite " + plan.legacyTasks + " task(s)" : "Reformat Plan (" + plan.legacyTasks + ")", className: armed ? BUTTON_PRIMARY : BUTTON, dataset: { reformat: plan.name } }) : "";
-    return '<div class="flex flex-wrap gap-2 items-center my-2.5 sm:my-3">' + Button({ label: "Execute Plan", className: BUTTON_PRIMARY, dataset: { prompt: PlanExecPrompt(plan.name) } }) + Button({ label: "Audit Plan", dataset: { prompt: PlanAuditPrompt(plan.name) } }) + reformat + Button({ label: "Open plan.md", dataset: { plan: plan.name, path: plan.filePath || "" } }) + "</div>";
+    return '<div class="flex flex-wrap gap-2 items-center my-2.5 sm:my-3">' + Button({ label: "Execute Plan", className: BUTTON_PRIMARY, dataset: { prompt: PlanExecPrompt(plan.name) } }) + Button({ label: "Audit Plan", dataset: { prompt: PlanAuditPrompt(plan.name) } }) + reformat + Button({ label: "Open " + planFileName(plan), dataset: { plan: plan.name, path: plan.filePath || "" } }) + "</div>";
   }
   function PlanHeading(plan, percent) {
-    return '<span class="flex flex-col gap-0.5 min-w-0 mr-auto"><span class="text-[14px] sm:text-[15px] font-semibold ' + titleClass(percent) + ' truncate">' + esc(plan.name) + '</span><span class="text-dim text-[10.5px] sm:text-[11.5px] font-normal font-mono">created ' + esc(plan.createdAt || "—") + " · updated " + esc(plan.lastUpdated || "—") + "</span></span>";
+    return '<span class="flex flex-col gap-0.5 min-w-0 mr-auto"><span class="text-[14px] sm:text-[15px] font-semibold ' + titleClass(percent) + ' truncate">' + esc(planTitle(plan)) + '</span><span class="text-dim text-[10.5px] sm:text-[11.5px] font-normal font-mono">created ' + formatPlanDate(plan.createdAt) + " · updated " + formatPlanDate(plan.lastUpdated) + "</span></span>";
   }
   function Plan(options) {
-    var plan = options.plan, planStats = options.planStats, projectId = options.projectId, query = options.query;
+    var plan = options.plan, planStats = options.planStats, projectId = options.projectId;
     var current = currentPhaseName(plan);
-    var phaseSections = plan.phases
-      .map(function (phase) { return PhaseSection({ plan: plan, phase: phase, query: query, projectId: projectId, current: current }); })
-      .filter(Boolean);
-    if (query && !phaseSections.length) return "";
+    var phaseSections = plan.phases.map(function (phase) {
+      return PhaseSection({ plan: plan, phase: phase, projectId: projectId, current: current });
+    });
     var variant = completionClass(planStats.percent);
     var planKey = projectId + "/" + plan.name;
-    var openAttr = (query || isOpen(planKey, false)) ? " open" : "";
+    var openAttr = isOpen(planKey, false) ? " open" : "";
     var issues = list(plan.errors).length + plan.phases.reduce(function (sum, phase) { return sum + list(phase.errors).length; }, 0);
     var issueBadge = issues ? Badge("stuck", issues + " error" + (issues === 1 ? "" : "s"), "plan_validate would fail") : "";
     return '<details data-key="' + esc(planKey) + '"' + openAttr + ' class="bg-surface border border-line rounded-xl p-2"><summary class="cursor-pointer flex gap-2 sm:gap-3 items-start">' + CHEVRON + PlanHeading(plan, planStats.percent) + '<span class="flex flex-col items-end gap-1 sm:gap-1.5 shrink-0">' + CompletionBadge(planStats) + '<span class="flex items-center gap-1.5">' + issueBadge + '<span class="' + MUTED + ' text-[11px]">' + plan.phases.length + " phase" + (plan.phases.length === 1 ? "" : "s") + "</span></span></span></summary>" + '<div class="pl-0 sm:pl-[22px] pt-1"><div class="mb-1">' + ProgressBar(planStats.percent, variant) + "</div>" + Notice("error", list(plan.errors)) + PlanActions(plan) + '<div class="grid gap-2 sm:gap-3 grid-cols-1 md:grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start">' + (phaseSections.join("") || '<span class="' + MUTED + '">No phases</span>') + "</div></div></details>";
@@ -328,8 +327,7 @@
 
   // ============== render ==============
   function render() {
-    if (!state.renderedQuery) rememberAccordions();
-    state.renderedQuery = state.query.trim();
+    rememberAccordions();
     var projects = (state.data && state.data.projects) || [];
     var select = document.querySelector("#project");
     var previous = state.project || select.value;
@@ -349,11 +347,11 @@
     }
     var query = state.query.trim().toLowerCase();
     var plans = project.plans
+      .filter(function (plan) { return !query || planTitle(plan).toLowerCase().includes(query); })
       .map(function (plan) { return { plan: plan, planStats: stats(plan.phases) }; })
       .filter(function (entry) { return state.filter === "all" || completionClass(entry.planStats.percent) === state.filter; })
       .sort(function (a, b) { return PLAN_SORT[state.sort](a, b) || a.plan.name.localeCompare(b.plan.name); })
-      .map(function (entry) { return Plan({ plan: entry.plan, planStats: entry.planStats, projectId: project.id, query: query }); })
-      .filter(Boolean)
+      .map(function (entry) { return Plan({ plan: entry.plan, planStats: entry.planStats, projectId: project.id }); })
       .join("");
     var notice = state.notice ? '<p class="' + (state.notice.kind === "error" ? "text-danger-ink border-danger-edge bg-danger-surface" : "text-success-ink border-success-edge bg-success-surface") + ' text-xs sm:text-sm font-mono border rounded-lg p-2.5 break-words" role="status">' + esc(state.notice.text) + "</p>" : "";
     document.querySelector("#content").innerHTML = notice + (plans || '<div class="text-muted text-sm border border-dashed border-line rounded-lg p-6 text-center">No plans found.</div>');
@@ -431,8 +429,9 @@
       sendHost({ type: "pi-web:open-file", path: openButton.dataset.path });
       return;
     }
-    document.querySelector("#modal-title").textContent = (plan ? plan.name : "Plan") + " — plan";
-    document.querySelector("#modal-content").textContent = (plan && plan.content) || "Plan files not found or empty.";
+    document.querySelector("#modal-title").textContent = plan ? planTitle(plan) + " — " + planFileName(plan) : "Plan";
+    var content = plan && (plan.metadata ? JSON.stringify(plan.metadata, null, 2) : plan.content);
+    document.querySelector("#modal-content").textContent = content || (plan && planFileName(plan) === "metadata.json" ? "Could not read valid metadata.json." : "Plan files not found or empty.");
     document.querySelector("#plan-modal").showModal();
   });
   document.querySelector("#modal-close").addEventListener("click", function () { document.querySelector("#plan-modal").close(); });

@@ -81,7 +81,7 @@
       <option value="created">Sort: newest created</option>
       <option value="updated">Sort: recently updated</option>
     </select>
-    <input id="search" type="search" aria-label="Search tasks" placeholder="Search tasks, files, agent…" class="order-5 sm:order-none flex-1 min-w-0 sm:min-w-[240px] sm:flex-none text-ink placeholder:text-dim bg-control border border-line rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-success/80 hover:border-edge transition-colors">
+    <input id="search" type="search" aria-label="Search plan titles" placeholder="Search plan titles…" class="order-5 sm:order-none flex-1 min-w-0 sm:min-w-[240px] sm:flex-none text-ink placeholder:text-dim bg-control border border-line rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-success/80 hover:border-edge transition-colors">
   </header>
   <main id="content" class="space-y-2">
     <p class="text-dim text-sm">Loading…</p>
@@ -93,6 +93,7 @@
     </div>
     <pre id="modal-content" class="p-3 sm:p-4 m-0 overflow-auto whitespace-pre-wrap text-[11px] sm:text-[12px] leading-relaxed font-mono text-secondary"></pre>
   </dialog>
+  <script src="./metadata.js"></script>
   <script src="./ppm-data.js"></script>
   <script src="./app.js"></script>
 </body>

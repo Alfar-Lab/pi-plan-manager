@@ -514,21 +514,30 @@
   async function readPlanData(plansRoot, name) {
     var planRoot = plansRoot + "/" + name;
     var errors = [];
-    var meta = "";
-    // Modal shows plan.md then each topic file (mirrors bin/commands/setup/helper.js); metadata comes from plan.md only.
-    var docs = ["plan.md", "plan.objective.md", "plan.constraint_invariant.md", "plan.approach.md", "plan.risk.md"];
-    var parts = await Promise.all(docs.map(async function (file) {
-      try {
-        var text = await readTextFile(planRoot + "/" + file);
-        if (file === "plan.md") meta = text;
-        return file === "plan.md" ? text.trimEnd() : "\n---\n<!-- " + file + " -->\n\n" + text.trimEnd();
-      } catch (error) {
-        if (error.status !== 404) errors.push(file + ": " + error.message);
-        return null;
+    var metadata = null, legacyMeta = "", content = "";
+    var filePath = planRoot + "/metadata.json";
+    try {
+      metadata = window.PpmMetadata.validateMetadata(JSON.parse(await readTextFile(filePath)));
+    } catch (error) {
+      if (error.status !== 404) errors.push("Cannot read metadata.json: " + error.message);
+      else {
+        // Older plans retain the original combined document view until migrated.
+        filePath = planRoot + "/plan.md";
+        var docs = ["plan.md", "plan.objective.md", "plan.constraint_invariant.md", "plan.approach.md", "plan.risk.md"];
+        var parts = await Promise.all(docs.map(async function (file) {
+          try {
+            var text = await readTextFile(planRoot + "/" + file);
+            if (file === "plan.md") legacyMeta = text;
+            return file === "plan.md" ? text.trimEnd() : "\n---\n<!-- " + file + " -->\n\n" + text.trimEnd();
+          } catch (error) {
+            if (error.status !== 404) errors.push(file + ": " + error.message);
+            return null;
+          }
+        }));
+        parts = parts.filter(function (part) { return part !== null; });
+        if (parts.length) content = parts.join("\n") + "\n";
       }
-    }));
-    parts = parts.filter(function (part) { return part !== null; });
-    var content = parts.length ? parts.join("\n") + "\n" : "";
+    }
 
     var phases = [];
     var legacyTasks = 0;
@@ -564,8 +573,8 @@
       errors.push("tasks: " + error.message);
     }
 
-    var metadata = planMetadata(meta);
-    return { name: name, filePath: planRoot + "/plan.md", content: content, createdAt: metadata.createdAt, lastUpdated: metadata.lastUpdated, phases: phases, errors: errors, legacyTasks: legacyTasks };
+    var dates = metadata ? { createdAt: metadata["created-at"], lastUpdated: metadata["updated-at"] } : planMetadata(legacyMeta);
+    return { name: name, title: metadata ? metadata.title : name, filePath: filePath, content: content, metadata: metadata, createdAt: dates.createdAt, lastUpdated: dates.lastUpdated, phases: phases, errors: errors, legacyTasks: legacyTasks };
   }
 
   async function readProjectData(root, name) {

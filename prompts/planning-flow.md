@@ -4,7 +4,7 @@ Use this flow for creating a structured project plan or breaking work into execu
 
 ## Resolve the project and plan
 
-Resolve `<project-path>` explicitly when supplied; otherwise use the active working-directory project root. Ask when multiple roots are plausible. Use a lowercase kebab-case `<plan-name>` unless the project already follows another convention. Projects register in `~/.config/project-plan-manager/config.json`.
+Resolve `<project-path>` explicitly when supplied; otherwise use the active working-directory project root. Ask when multiple roots are plausible. Use a lowercase kebab-case `<plan-name>` unless the project already follows another convention. `<plan-name>` is the directory slug passed as `--plan`. The human-readable name is the `title` in `metadata.json`; use `title` for display and search, never as `--plan`. Projects register in `~/.config/project-plan-manager/config.json`.
 
 Before writing any plan file, initialize and register the target plan:
 
@@ -16,7 +16,7 @@ The plan layout is:
 
 ```text
 <project-path>/.ppm/<plan-name>/
-|-- plan.md                       metadata, file index, changelog
+|-- metadata.json                 title, dates, file index, change-log, base-commit
 |-- plan.objective.md             what and why, scope, Done when
 |-- plan.constraint_invariant.md  rules every task must respect
 |-- plan.approach.md              design, current state, phases
@@ -39,26 +39,40 @@ The plan layout is:
 
 ## Plan documents
 
-The plan is five small files so each reader loads only what it needs. `plan_validate` errors when one is missing. Keep each file short: facts and decisions, not narrative. Anything a worker needs goes into the task's `details`, never only into these files.
+The plan is five small files (`metadata.json` plus four topic files) so each reader loads only what it needs. `plan_validate` errors when a topic file is missing. Keep each file short: facts and decisions, not narrative. Anything a worker needs goes into the task's `details`, never only into these files.
 
-`plan.md` (metadata only):
+`metadata.json` (JSON; the only metadata file, there is no `plan.md` in new plans):
 
-```markdown
-# <Plan Name>
-
-Created: <YYYY-MM-DD>
-Last updated: <YYYY-MM-DD>
-Base commit: <git HEAD the plan was written against>
-
-## Files
-- plan.objective.md: objective, scope, Done when
-- plan.constraint_invariant.md: constraints and invariants
-- plan.approach.md: approach and phases
-- plan.risk.md: risks and open questions
-
-## Changelog
-- <YYYY-MM-DD>: created
+```json
+{
+  "title": "OAuth login",
+  "created-at": "02-01-2026 18:07",
+  "updated-at": "02-01-2026 18:07",
+  "base-commit": "3f6cf3bf0945910786584378ce24aeceef7002a4",
+  "files": {
+    "plan.objective.md": "plan.objective.md",
+    "plan.constraint_invariant.md": "plan.constraint_invariant.md",
+    "plan.approach.md": "plan.approach.md",
+    "plan.risk.md": "plan.risk.md",
+    "phase_0.json": "tasks/phase_0.json"
+  },
+  "change-log": {
+    "02-01-2026 18:07": "created"
+  }
+}
 ```
+
+- `title` (required, text): display and search name. It is free text, not the directory slug; the CLI `--plan` argument is the slug.
+- `created-at`, `updated-at` (required): `DD-MM-YYYY HH:MM` in UTC. `created-at` is set once and kept. `updated-at` is set to the current UTC minute on every change.
+- `files` (required, informational): filename to plan-relative path. Keep it in sync with the topic and phase files: when a phase file is created, renamed, or removed, update its `files` entry in the same edit.
+- `change-log` (required): key `DD-MM-YYYY HH:MM` (UTC minute) to description. Never overwrite an existing key: when the minute already has an entry, append a newline plus the new text to its value.
+- `base-commit` (optional): git HEAD the plan was written against. Omit when there is no git HEAD.
+
+Get the timestamp with `date -u +"%d-%m-%Y %H:%M"`.
+
+`ppm init --plan` creates an initial `metadata.json`. Planning fills it in: set `title`, `files`, and `base-commit`; keep `created-at` and existing `change-log` entries; set `updated-at`; add a `change-log` entry (`created` for a new plan). Edit `metadata.json` with the file tool. Only phase files are restricted to `ppm`.
+
+Topic files: `plan.objective.md`, `plan.constraint_invariant.md`, `plan.approach.md`, `plan.risk.md`. Their sections are described below.
 
 `plan.objective.md`: `## Objective` (outcome and why, 1 to 5 lines), `## Scope` (in / out), `## Sources` (requirement docs as relative links), `## Done when` (observable, checkable criteria for the whole plan, including the final verification command).
 
@@ -68,11 +82,11 @@ Base commit: <git HEAD the plan was written against>
 
 `plan.risk.md`: `## Risks` (risk, mitigation), `## Open questions` (each blocking or not, and who answers).
 
-On any later change, update `Last updated:` and append one changelog line in `plan.md`.
+On any later change, set `updated-at` to the current UTC minute and add one `change-log` entry (same-minute rule above) in `metadata.json`.
 
 ## Planning order
 
-1. Investigate, then write the four topic files and `plan.md`. Resolve or ask open questions that change scope before going further.
+1. Investigate, then write the four topic files and `metadata.json`. Resolve or ask open questions that change scope before going further.
 2. Derive phases and tasks from `plan.approach.md` `## Phases`; every phase file has an entry there and every task serves its phase's deliverable. Copy the constraints a task must honor into its `details.contract`, because workers never read plan files.
 3. When resuming planning in a new session, or after the user edited the plan files, read `plan.approach.md` and `plan.constraint_invariant.md` before writing tasks. Do not re-read files you just wrote in this session.
 
@@ -223,7 +237,7 @@ Rules:
 
 ## Required planning deliverables
 
-Produce the five plan files and one phase (built with `task_upsert`) per `plan.approach.md` phase entry, with actionable tasks, dependencies, and verification criteria. Confirm all files are inside the intended project and referenced paths exist.
+Produce `metadata.json`, the four topic files, and one phase (built with `task_upsert`) per `plan.approach.md` phase entry, with actionable tasks, dependencies, and verification criteria. Confirm all files are inside the intended project and referenced paths exist.
 
 After the phases are written, run both commands and iterate until `plan_validate` prints `Plan valid` with no errors:
 
@@ -244,7 +258,7 @@ These notes are written into the plan so the executor does not have to improvise
 - One task ID is dispatched to one worker at a time. Never split a single task between two workers with an ad hoc ownership division; if a task needs splitting, update the plan and add new task IDs.
 - Workers modify only files in their task's `files`. A worker that needs to change another file stops and reports it instead of editing.
 - If a worker returns "partial" or no code, do not re-dispatch the same task unchanged. Split it into smaller tasks in the plan first, then dispatch the new tasks.
-- Record the commit or `HEAD` the plan was written against as `Base commit:` in `plan.md`. If `HEAD` moves during execution, the orchestrator re-checks affected tasks before dispatching more work.
+- Record the commit or `HEAD` the plan was written against as `base-commit` in `metadata.json` (optional field, see above). If `HEAD` moves during execution, the orchestrator re-checks affected tasks before dispatching more work.
 
 ## Supporting commands
 
@@ -255,6 +269,8 @@ ppm init [--project <project-path>]
 ppm init --plan <plan-name> [--project <project-path>]
 ppm plan_validate --plan <plan-name> [--project <project-path>]
 ppm plan_status --plan <plan-name> [--project <project-path>]
+ppm metadata --plan <plan-name> [--project <project-path>]              # read-only, prints metadata.json
+ppm migrate_metadata --plan <plan-name> [--project <project-path>] [--dry-run]  # legacy plan.md metadata -> metadata.json
 ppm plan_waves --plan <plan-name> [--project <project-path>]
 ppm task_upsert --plan <plan-name> --phase <phase_x> --task <json|-> [--title <title>] [--project <project-path>]
 ppm task_remove --plan <plan-name> --phase <phase_x> --task-id <id> [--project <project-path>]

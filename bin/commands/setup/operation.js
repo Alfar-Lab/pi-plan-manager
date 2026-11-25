@@ -10,6 +10,7 @@ const {
 	validatePort,
 } = require("./helper");
 const { migrateFormatHandler } = require("./format");
+const { metadataHandler, migrateMetadataHandler } = require("./metadata");
 
 module.exports = [
 	createOperation({
@@ -61,6 +62,22 @@ module.exports = [
 		name: "migrate_format",
 		usage: "ppm migrate_format --plan <name> [--dry-run] [--project <path>]",
 		handler: migrateFormatHandler,
+		options: ["project", "plan", "dry-run"],
+		required: ["plan"],
+	}),
+
+	createOperation({
+		name: "metadata",
+		usage: "ppm metadata --plan <name> [--project <path>]",
+		handler: metadataHandler,
+		options: ["project", "plan"],
+		required: ["plan"],
+	}),
+
+	createOperation({
+		name: "migrate_metadata",
+		usage: "ppm migrate_metadata --plan <name> [--project <path>] [--dry-run]",
+		handler: migrateMetadataHandler,
 		options: ["project", "plan", "dry-run"],
 		required: ["plan"],
 	}),

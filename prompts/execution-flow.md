@@ -6,7 +6,7 @@ Use this flow for executing, continuing, or resuming a plan. Read this file in f
 
 Resolve `<project-path>` and `<plan-name>`. Execution never creates plans: do not run `ppm init` here, because a mistyped name would silently create an empty plan. If the plan does not exist, `ppm plan_status` fails with `plan not found`; stop and ask the user, or switch to the planning flow.
 
-Get phase order and the current phase from the CLI. Do not use memory, filenames, or `plan.md` to claim completion:
+Get phase order and the current phase from the CLI. Do not use memory, filenames, or `metadata.json` to claim completion:
 
 ```bash
 ppm plan_status --plan <plan-name> [--project <project-path>]
@@ -14,7 +14,7 @@ ppm plan_status --plan <plan-name> [--project <project-path>]
 
 Start at the `Current:` phase it reports and process phases in numeric order without skipping.
 
-Read `<project-path>/.ppm/<plan-name>/plan.constraint_invariant.md` once before dispatching: its rules are part of every verification in step 6. Read `plan.md` only for `Base commit:`. Do not load the other plan files during execution unless a worker reports a conflict that the task details cannot settle. Workers never read plan files; everything they need is in `ppm task_get`.
+Read `<project-path>/.ppm/<plan-name>/plan.constraint_invariant.md` once before dispatching: its rules are part of every verification in step 6. Read `base-commit` from `<project-path>/.ppm/<plan-name>/metadata.json` (optional; skip the check if absent). If `metadata.json` does not exist, the plan is legacy: read `Base commit:` from `plan.md` instead, or skip the check if that line is absent too. Do not run `ppm metadata` here: it refuses legacy plans, which stay usable until migrated. Do not load the other plan files during execution unless a worker reports a conflict that the task details cannot settle. Workers never read plan files; everything they need is in `ppm task_get`.
 
 ## Roles
 

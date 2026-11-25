@@ -4,7 +4,7 @@ Use this flow to audit or review a plan before execution. Read this file in full
 
 ## Resolve and inspect safely
 
-Resolve `<project-path>` and `<plan-name>`. Do not initialize or register anything during the audit. Pass `--project <project-path>` to CLI commands when explicit project resolution is needed. If the plan or required files do not exist, report that evidence and return `not_ready`; do not create them. Inspect `plan.md` and all four `plan.*.md` files under `<project-path>/.ppm/<plan-name>/`. Use the read-only CLI for phase order, schema validity, and task data:
+Resolve `<project-path>` and `<plan-name>`. Do not initialize or register anything during the audit. Pass `--project <project-path>` to CLI commands when explicit project resolution is needed. If the plan or required files do not exist, report that evidence and return `not_ready`; do not create them. Inspect `metadata.json` and all four `plan.*.md` files under `<project-path>/.ppm/<plan-name>/`. If `metadata.json` is absent, the plan is legacy: read `plan.md` instead and report the legacy format as a `minor` finding (fix with `ppm migrate_metadata`, see adjustment-flow.md). Audition never runs `ppm migrate_metadata`. Use the read-only CLI for phase order, schema validity, task data, and metadata:
 
 ```bash
 ppm plan_validate --plan <name> [--project <project-path>]
@@ -12,6 +12,7 @@ ppm plan_status --plan <name> [--project <project-path>]
 ppm plan_waves --plan <name> [--project <project-path>]
 ppm task_list --plan <name> --phase <phase_x> [--project <project-path>]
 ppm task_get --plan <name> --phase <phase_x> --task-id <id> [--project <project-path>]
+ppm metadata --plan <name> [--project <project-path>]    # read-only; fails on legacy plan.md-only plans, then read plan.md directly
 ```
 
 A `plan_validate` failure is a `blocker` finding. Do not call status or progress mutation commands. Never mark a task, write progress, or rewrite the plan during an audition.
@@ -20,6 +21,7 @@ A `plan_validate` failure is a `blocker` finding. Do not call status or progress
 
 Assess:
 
+- metadata: `metadata.json` has `title`, `created-at`, `updated-at` (`DD-MM-YYYY HH:MM`, UTC), `files`, and `change-log`; `files` entries point to existing plan-relative paths; `base-commit` present when expected (informational);
 - objective and scope clarity;
 - source requirement traceability;
 - assumptions versus verified facts;

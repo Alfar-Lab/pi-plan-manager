@@ -18,19 +18,35 @@ Keep this output as the baseline. Record the completed count per phase.
 - Back up before editing: `cp -r <project-path>/.ppm/<name>/tasks <project-path>/.ppm/<name>/tasks.bak-YYYYMMDD` (`.ppm/` is often not in git).
 - Read `plan.approach.md` and `plan.constraint_invariant.md` before reworking tasks; reworked tasks must still serve an approach phase and honor every constraint.
 
-### Legacy single-file plan.md
+### Legacy plan.md: monolith and metadata
 
-If `plan_validate` warns `plan.md: legacy single-file format`, split it first, as described in planning-flow.md "Plan documents". Copy `plan.md` to `plan.md.bak-YYYYMMDD`, then move content without rewriting it:
+Two legacy states exist. Handle them in this order.
 
-| Old section | New file |
+**A. Monolithic `plan.md` (pre-split).** If `plan_validate` warns `plan.md: legacy single-file format`, first copy the topic sections into the topic files. Back up `<project-path>/.ppm/<name>/plan.md` to `<project-path>/.ppm/<name>/plan.md.bak-YYYYMMDD`. Keep the original `plan.md` in place; never delete it. Copy section content without rewriting it:
+
+| Old section in `.ppm/<name>/plan.md` | New file (full path) |
 |---|---|
-| 1. Objective, 2. Source documents, 9. Definition of done | `plan.objective.md` (`## Done when` from 9) |
-| 4. Constraints and invariants, 8. Verification strategy | `plan.constraint_invariant.md` |
-| 3. Current-state findings, 5. Proposed approach, 6. Dependencies | `plan.approach.md` (add a `### phase_<n>` entry per phase file) |
-| 7. Risks and mitigations, open questions | `plan.risk.md` |
-| title, `Created`, `Last updated`, base commit, any Adjustment log | `plan.md` (adjustment log entries become `## Changelog` lines) |
+| 1. Objective, 2. Source documents | `.ppm/<name>/plan.objective.md` (`## Objective`, `## Sources`) |
+| 9. Definition of done | `.ppm/<name>/plan.objective.md` (`## Done when`) |
+| 4. Constraints and invariants, 8. Verification strategy | `.ppm/<name>/plan.constraint_invariant.md` |
+| 3. Current-state findings, 5. Proposed approach, 6. Dependencies | `.ppm/<name>/plan.approach.md` (add a `### phase_<n>` entry per phase file) |
+| 7. Risks and mitigations, open questions | `.ppm/<name>/plan.risk.md` |
 
 Drop text that only repeats task `details`. Re-run `plan_validate` until the warning is gone.
+
+**B. Metadata migration (required whenever `metadata.json` is absent).** This applies to monolithic plans after step A and to split plans that only have `plan.md` metadata. Run it after the optional step A topic copy and before any task change or `metadata.json` write in this flow (`task_upsert`, `task_remove`, `files` sync, or Record):
+
+```bash
+ppm migrate_metadata --plan <name> [--project <project-path>] --dry-run
+ppm migrate_metadata --plan <name> [--project <project-path>]
+ppm metadata --plan <name> [--project <project-path>]
+```
+
+- Dry run prints `Would write <project-path>/.ppm/<name>/metadata.json:` followed by the JSON it would create, and writes nothing. If `metadata.json` already exists and is valid, the command prints `Metadata already present and valid ... Nothing to migrate.` Check the preview, then run the real command, which prints `Migrated: <plan.md> -> <metadata.json>`.
+- Mapping: H1 -> `title`; `Created` -> `created-at`; `Last updated` -> `updated-at`; `Base commit:` -> `base-commit`; `## Files` links and `name: path` entries -> `files` (standard doc names map to themselves when present); dated `## Changelog` / Adjustment log lines -> `change-log`.
+- If `Created` or `Last updated` is absent, the date falls back to the `plan.md` file birth or modification time. A date-only value (`YYYY-MM-DD`) becomes `00:00`.
+- The migration converts metadata only. It does not split monolithic topic content, does not overwrite an existing `metadata.json`, and keeps `plan.md` unchanged.
+- If `metadata.json` already exists, skip this step.
 
 ## 2. What may change
 
@@ -43,6 +59,8 @@ Drop text that only repeats task `details`. Re-run `plan_validate` until the war
 | `fail` task being replaced | Carry its `progress` (failure evidence) into the successor task's `details` under a `Prior attempt:` line. The `progress` array entries `{ time, detail }` are preserved byte-for-byte. |
 
 Phase files stay `phase_<n>.json` with `phase` equal to the filename. Frozen phases keep their names; reworked phases may be renumbered after the last frozen one. Delete a phase file only when all its tasks were moved elsewhere.
+
+`metadata.json` `files` must track the phase set. For every phase file added, renamed, or removed, update its `files` entry in the same step (`"phase_<n>.json": "tasks/phase_<n>.json"`). Remove the entry for a deleted phase, and add one for a new phase. Do this in the Record step at the latest, before `ppm metadata` is used to verify.
 
 Task IDs: keep IDs of retained tasks. New tasks get new IDs; never reuse the ID of a removed task. New tasks start as `todo` with empty `progress` automatically.
 
@@ -63,10 +81,10 @@ Iterate until all hold:
 
 ## 5. Record
 
-Update `plan.approach.md` `## Phases` to match the reworked phases. Then update `Last updated:` in `plan.md` and append under `## Changelog`:
+Update `plan.approach.md` `## Phases` to match the reworked phases. Sync `metadata.json` `files` with the phase files (see section 2). Then set `updated-at` to the current UTC minute (`date -u +"%d-%m-%Y %H:%M"`) and add a `change-log` entry keyed by that minute. If that minute already has a key, append a newline plus the new text to its value; never overwrite it. Value:
 
-```markdown
-- YYYY-MM-DD: adjusted. Reason: ... Frozen: phase_0, phase_1 (1.1, 1.2). Reworked: ... ID map: 1.3 -> 1.3a, 1.3b; 2.1 removed (merged into 2.4). Backup: tasks.bak-YYYYMMDD
+```text
+adjusted. Reason: ... Frozen: phase_0, phase_1 (1.1, 1.2). Reworked: ... ID map: 1.3 -> 1.3a, 1.3b; 2.1 removed (merged into 2.4). Backup: tasks.bak-YYYYMMDD
 ```
 
 ## 6. Report

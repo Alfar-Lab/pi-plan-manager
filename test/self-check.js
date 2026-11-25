@@ -42,14 +42,32 @@ async function main() {
 	fs.mkdirSync(project);
 	ok("init", "--plan", "demo");
 	const planDir = path.join(project, ".ppm", "demo");
-	const docs = ["plan.md", "plan.objective.md", "plan.constraint_invariant.md", "plan.approach.md", "plan.risk.md"];
+	const docs = ["plan.objective.md", "plan.constraint_invariant.md", "plan.approach.md", "plan.risk.md"];
+	const metadataFile = path.join(planDir, "metadata.json");
+	const seeded = JSON.parse(ok("metadata", "--plan", "demo"));
+	assert.equal(seeded.title, "demo");
+	assert.match(seeded["created-at"], /^\d{2}-\d{2}-\d{4} \d{2}:\d{2}$/);
+	assert.equal(seeded["updated-at"], seeded["created-at"]);
+	assert.deepEqual(seeded.files, Object.fromEntries(docs.map((doc) => [doc, doc])));
+	assert.ok(!fs.existsSync(path.join(planDir, "plan.md")), "init does not write legacy markdown");
 	for (const doc of docs) fs.writeFileSync(path.join(planDir, doc), `# ${doc}\nphase_0 phase_1\n`);
 	// Split plan docs: missing topic file is an error; legacy single-file plan.md only warns; phases trace to approach.
 	fs.unlinkSync(path.join(planDir, "plan.risk.md"));
 	writePhase("phase_0", [task("A")]);
 	bad(/plan\.risk\.md: missing/, "plan_validate", "--plan", "demo");
-	fs.writeFileSync(path.join(planDir, "plan.md"), "# Demo\n\n## 1. Objective\n");
+	fs.unlinkSync(metadataFile);
+	const legacyPlanFile = path.join(planDir, "plan.md");
+	fs.writeFileSync(legacyPlanFile, "# Demo\n\n## 1. Objective\n");
 	assert.match(ok("plan_validate", "--plan", "demo"), /plan\.md: legacy single-file format/);
+	fs.writeFileSync(metadataFile, JSON.stringify(seeded));
+	bad(/plan\.risk\.md: missing/, "plan_validate", "--plan", "demo");
+	fs.unlinkSync(legacyPlanFile);
+	fs.writeFileSync(metadataFile, JSON.stringify({ ...seeded, "created-at": "29-02-2025 18:07" }));
+	bad(/metadata\.json.*created-at/, "metadata", "--plan", "demo");
+	bad(/metadata\.json.*created-at/, "plan_validate", "--plan", "demo");
+	fs.writeFileSync(metadataFile, JSON.stringify({ ...seeded, "created-at": "01-01-0000 00:00", "change-log": { "01-01-0000 00:00": "invalid" } }));
+	bad(/metadata\.json.*created-at.*change-log key/, "metadata", "--plan", "demo");
+	fs.writeFileSync(metadataFile, JSON.stringify({ ...seeded, title: "Demo dashboard", "created-at": "29-02-2024 08:05", "updated-at": "02-01-2026 18:07" }));
 	for (const doc of docs) fs.writeFileSync(path.join(planDir, doc), `# ${doc}\nphase_0 phase_1\n`);
 	writePhase("phase_7", [task("A")]);
 	assert.match(ok("plan_validate", "--plan", "demo"), /phase_7: not described in plan\.approach\.md/);
@@ -248,7 +266,8 @@ async function main() {
 	// Missing plan is an error, not an empty status.
 	bad(/plan not found/, "plan_status", "--plan", "nope");
 
-	// Dashboard: API carries lint/waves, Host guard, port conflict is a clean error.
+	metadataMigrationChecks();
+	// Dashboard: API carries metadata and lint/waves, Host guard, port conflict is a clean error.
 	await dashboardChecks();
 
 	process.stdout.write("self-check passed\n");
@@ -276,21 +295,67 @@ async function waitFor(fn, ms = 5000) {
 	}
 }
 
+function metadataMigrationChecks() {
+	const dir = path.join(project, ".ppm", "legacy");
+	fs.mkdirSync(dir);
+	const legacyFile = path.join(dir, "plan.md");
+	const jsonFile = path.join(dir, "metadata.json");
+	const source = "# Legacy title\n\nCreated: 2025-12-31\nLast updated: 2026-01-02T18:07:30Z\nBase commit: abc123\n\n## Files\n- [notes.md](notes/notes.md)\n- [objective.md](plan.objective.md)\n- design.md: `docs/Design Notes.md`\n- build: Dockerfile\n- plan.risk.md: risks and open questions\n\n## Changelog\n- 2025-12-31: created\n- 2026-01-02T18:07:30Z: first\n- 2026-01-02T18:07:59Z: second\n";
+	fs.writeFileSync(legacyFile, source);
+	ok("init", "--plan", "legacy");
+	const missing = ppm("metadata", "--plan", "legacy");
+	assert.notEqual(missing.code, 0);
+	assert.ok(missing.out.includes(`ppm migrate_metadata --plan legacy --project '${fs.realpathSync(project)}'`), missing.out);
+	ok("migrate_metadata", "--plan", "legacy", "--dry-run");
+	assert.ok(!fs.existsSync(jsonFile));
+	ok("migrate_metadata", "--plan", "legacy");
+	const saved = fs.readFileSync(jsonFile, "utf8");
+	const metadata = JSON.parse(ok("metadata", "--plan", "legacy"));
+	assert.equal(metadata.title, "Legacy title");
+	assert.equal(metadata["created-at"], "31-12-2025 00:00");
+	assert.equal(metadata["updated-at"], "02-01-2026 18:07");
+	assert.equal(metadata["base-commit"], "abc123");
+	assert.equal(metadata.files["notes.md"], "notes/notes.md");
+	assert.equal(metadata.files["objective.md"], "plan.objective.md");
+	assert.equal(metadata.files["design.md"], "docs/Design Notes.md");
+	assert.equal(metadata.files.build, "Dockerfile");
+	assert.ok(!Object.hasOwn(metadata.files, "plan.risk.md"), "legacy prose is not a path");
+	assert.equal(metadata["change-log"]["31-12-2025 00:00"], "created");
+	assert.equal(metadata["change-log"]["02-01-2026 18:07"], "first\nsecond");
+	ok("migrate_metadata", "--plan", "legacy");
+	assert.equal(fs.readFileSync(jsonFile, "utf8"), saved);
+	assert.equal(fs.readFileSync(legacyFile, "utf8"), source);
+}
+
 async function dashboardChecks() {
 	const port = String(40000 + Math.floor(Math.random() * 20000));
+	const oldDir = path.join(project, ".ppm", "old-dashboard");
+	fs.mkdirSync(path.join(oldDir, "tasks"), { recursive: true });
+	fs.writeFileSync(path.join(oldDir, "plan.md"), "# Older plan\n\nCreated: 2026-01-02\n");
+	fs.writeFileSync(path.join(oldDir, "plan.objective.md"), "# Older objective\n");
 	writePhase("phase_2", [task("X")]);
 	const server = spawn(process.execPath, [CLI, "dashboard_serve", "--project", project, "--port", port], { env });
 	try {
 		const okResponse = await waitFor(() => get(port, `127.0.0.1:${port}`));
 		assert.equal(okResponse.status, 200);
-		const phase = JSON.parse(okResponse.body).projects[0].plans[0].phases.find((p) => p.name === "phase_0");
+		const plans = JSON.parse(okResponse.body).projects[0].plans;
+		const plan = plans.find((entry) => entry.name === "demo");
+		const oldPlan = plans.find((entry) => entry.name === "old-dashboard");
+		assert.equal(oldPlan.metadata, null);
+		assert.equal(oldPlan.createdAt, "2026-01-02");
+		assert.equal(path.basename(oldPlan.filePath), "plan.md");
+		assert.match(oldPlan.content, /# Older plan[^]*<!-- plan\.objective\.md -->[^]*# Older objective/);
+		assert.equal(plan.title, "Demo dashboard");
+		assert.equal(plan.createdAt, "29-02-2024 08:05");
+		assert.equal(plan.lastUpdated, "02-01-2026 18:07");
+		assert.equal(plan.metadata.title, "Demo dashboard");
+		assert.equal(path.basename(plan.filePath), "metadata.json");
+		const phase = plan.phases.find((p) => p.name === "phase_0");
 		assert.ok(Array.isArray(phase.errors) && Array.isArray(phase.warnings), "api lint fields");
 		assert.equal(typeof phase.wave.A, "number");
 		assert.ok(Array.isArray(phase.criticalPath));
 		// phase_2 holds one legacy-format task, so the Reformat button must show.
-		assert.equal(JSON.parse(okResponse.body).projects[0].plans[0].legacyTasks, 1);
-		// Modal content concatenates plan.md and every plan.*.md topic file.
-		assert.match(JSON.parse(okResponse.body).projects[0].plans[0].content, /# plan\.md[^]*<!-- plan\.objective\.md -->[^]*<!-- plan\.risk\.md -->/);
+		assert.equal(plan.legacyTasks, 1);
 		// Reformat button endpoint: CSRF header required, then migrates in code and the count drops to 0.
 		const host = `127.0.0.1:${port}`;
 		const migrateUrl = `/api/migrate_format?project=${encodeURIComponent(fs.realpathSync(project))}&plan=demo`;
@@ -301,7 +366,8 @@ async function dashboardChecks() {
 		const migratedBody = JSON.parse(migratedRes.body);
 		assert.deepEqual([migratedBody.phases, migratedBody.tasks], [["phase_2"], 1]);
 		fs.rmSync(migratedBody.backup, { recursive: true });
-		assert.equal(JSON.parse((await get(port, host)).body).projects[0].plans[0].legacyTasks, 0);
+		assert.equal(JSON.parse((await get(port, host)).body).projects[0].plans.find((entry) => entry.name === "demo").legacyTasks, 0);
+		assert.equal((await get(port, host, "/metadata.js")).status, 200);
 		assert.equal((await get(port, `localhost:${port}`)).status, 200);
 		assert.equal((await get(port, `evil.example:${port}`)).status, 403);
 		// Standalone flag lets panel/app.js load without a pi-web cwd (else stuck on "Waiting for a workspace…").

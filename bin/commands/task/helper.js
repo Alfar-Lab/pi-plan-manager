@@ -18,6 +18,7 @@ const {
 } = require("../_shared/phase");
 const { waves, criticalPath, lintPhase } = require("../_shared/analysis");
 const { PLAN_DOCS, LEGACY_PLAN_MD } = require("../_shared/patterns");
+const { readMetadata } = require("../setup/metadata");
 
 function resolvePlanRoot(options) {
 	assertSafeSegment(options.plan, "plan name", PLAN_PATTERN);
@@ -332,13 +333,16 @@ function planValidateHandler(options) {
 	const errors = [];
 	const warnings = [];
 	const readDoc = (file) => { try { return fs.readFileSync(path.join(planRoot, file), "utf8"); } catch { return null; } };
-	const planMd = readDoc("plan.md");
 	const approach = readDoc("plan.approach.md");
-	if (planMd === null) errors.push("plan.md: missing");
+	// Only missing metadata falls back to legacy plan.md. A retained monolith is a migration hint, not a substitute for missing topic docs in canonical plans.
+	let legacy = false;
+	try { legacy = readMetadata(planRoot) === null; } catch (error) { errors.push(error.message); }
 	const missingDocs = PLAN_DOCS.filter((file) => readDoc(file) === null);
-	// Legacy single-file plans keep executing; the adjustment flow splits them.
-	if (missingDocs.length && LEGACY_PLAN_MD.test(planMd ?? "")) warnings.push("plan.md: legacy single-file format; split it into plan.*.md via the adjustment flow");
-	else errors.push(...missingDocs.map((file) => `${file}: missing`));
+	const planMd = legacy || missingDocs.length ? readDoc("plan.md") : null;
+	if (legacy && planMd === null) errors.push("metadata.json: missing (no legacy plan.md either)");
+	const monolith = missingDocs.length && LEGACY_PLAN_MD.test(planMd ?? "");
+	if (monolith) warnings.push("plan.md: legacy single-file format; split it into plan.*.md via the adjustment flow");
+	if (!legacy || !monolith) errors.push(...missingDocs.map((file) => `${file}: missing`));
 	if (!names.length) errors.push("tasks/: no phase_*.json files");
 	// Traceability: every phase is derived from a phase entry in plan.approach.md.
 	if (approach !== null) for (const name of names) if (!approach.includes(name)) warnings.push(`${name}: not described in plan.approach.md`);

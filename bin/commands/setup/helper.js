@@ -10,6 +10,7 @@ const { PLAN_PATTERN, assertSafeSegment, projectRoot, readPhaseFile, listPhaseNa
 const { PLAN_DOCS } = require("../_shared/patterns");
 const { lintPhase, waves, criticalPath } = require("../_shared/analysis");
 const { migrateFormat } = require("./format");
+const { readMetadata, seedMetadata } = require("./metadata");
 
 const CONFIG_DIR = path.join(os.homedir(), ".config", "project-plan-manager");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
@@ -51,6 +52,7 @@ function initHandler(options) {
 	if (options.plan) {
 		assertSafeSegment(options.plan, "plan name", PLAN_PATTERN);
 		fs.mkdirSync(path.join(root, ".ppm", options.plan, "tasks"), { recursive: true });
+		seedMetadata(path.join(root, ".ppm", options.plan), options.plan);
 	}
 	registerProject(root);
 	process.stdout.write(options.plan ? `Plan initialized: ${options.plan}\n` : `Project initialized: ${root}\n`);
@@ -123,20 +125,32 @@ function planMetadata(content) {
 function readPlanData(plansRoot, name) {
 	const planRoot = path.join(plansRoot, name);
 	const errors = [];
+	let metadata = null;
 	let content = "";
-	let meta = "";
-	// Dashboard modal shows plan.md then each topic file; metadata comes from plan.md only.
-	const parts = ["plan.md", ...PLAN_DOCS].flatMap((file) => {
-		try {
-			const text = fs.readFileSync(path.join(planRoot, file), "utf8");
-			if (file === "plan.md") meta = text;
-			return [file === "plan.md" ? text.trimEnd() : `\n---\n<!-- ${file} -->\n\n${text.trimEnd()}`];
-		} catch (error) {
-			if (error.code !== "ENOENT") errors.push(`${file}: ${error.message}`);
-			return [];
+	let filePath = path.join(planRoot, "metadata.json");
+	let dates = { createdAt: null, lastUpdated: null };
+	try {
+		metadata = readMetadata(planRoot);
+		if (metadata) {
+			dates = { createdAt: metadata["created-at"], lastUpdated: metadata["updated-at"] };
+		} else {
+			// Older plans retain the original combined document view until migrated.
+			filePath = path.join(planRoot, "plan.md");
+			const parts = ["plan.md", ...PLAN_DOCS].flatMap((file) => {
+				try {
+					const text = fs.readFileSync(path.join(planRoot, file), "utf8");
+					if (file === "plan.md") dates = planMetadata(text);
+					return [file === "plan.md" ? text.trimEnd() : `\n---\n<!-- ${file} -->\n\n${text.trimEnd()}`];
+				} catch (error) {
+					if (error.code !== "ENOENT") errors.push(`${file}: ${error.message}`);
+					return [];
+				}
+			});
+			if (parts.length) content = `${parts.join("\n")}\n`;
 		}
-	});
-	content = parts.length ? `${parts.join("\n")}\n` : "";
+	} catch (error) {
+		errors.push(error.message);
+	}
 	let phases = [];
 	let legacyTasks = 0;
 	try {
@@ -166,7 +180,7 @@ function readPlanData(plansRoot, name) {
 			}
 		});
 	} catch (error) { errors.push(`tasks: ${error.message}`); }
-	return { name, content, ...planMetadata(meta), phases, errors, legacyTasks };
+	return { name, title: metadata ? metadata.title : name, filePath, content, metadata, ...dates, phases, errors, legacyTasks };
 }
 
 function readProjectData(project) {
@@ -234,6 +248,7 @@ function dashboardServeHandler(options) {
 		try {
 			if (route === "/api/tasks") return dashboardResponse(response, 200, JSON.stringify(readDashboardData(options)), "application/json; charset=utf-8");
 			if (route === "/" || route === "/index.html" || route === "/task.html") return dashboardResponse(response, 200, fs.readFileSync(htmlPath), "text/html; charset=utf-8");
+			if (route === "/metadata.js") return dashboardResponse(response, 200, fs.readFileSync(path.resolve(__dirname, "../../../panel/metadata.js")), "application/javascript; charset=utf-8");
 			if (route === "/ppm-data.js") return dashboardResponse(response, 200, STANDALONE_DATA_JS, "application/javascript; charset=utf-8");
 			if (route === "/app.js") return dashboardResponse(response, 200, fs.readFileSync(path.resolve(__dirname, "../../../panel/app.js")), "application/javascript; charset=utf-8");
 			if (route === "/tailwind.js") return dashboardResponse(response, 200, fs.readFileSync(path.resolve(__dirname, "../../../panel/tailwind.js")), "application/javascript; charset=utf-8");

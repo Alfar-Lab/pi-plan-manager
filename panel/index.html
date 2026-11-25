@@ -14,6 +14,25 @@
     tailwind.config = {
       theme: {
         extend: {
+          colors: {
+            surface: '#20201e',
+            control: '#292a25',
+            'control-hover': '#30312b',
+            line: '#32322d',
+            edge: '#3d3d35',
+            track: '#31302b',
+            ink: '#e1ded5',
+            heading: '#ece9e0',
+            secondary: '#c6c1b5',
+            muted: '#b0aa9c',
+            dim: '#9e988b',
+            success: { DEFAULT: '#529e7d', ink: '#83c4a4', surface: '#1e2d26', edge: '#345143' },
+            active: { DEFAULT: '#5389bf', ink: '#91b9e1', surface: '#1d2a35', edge: '#334d66' },
+            warning: { DEFAULT: '#d19b46', ink: '#dcb777', surface: '#2e281e', edge: '#59452c' },
+            danger: { DEFAULT: '#bc6968', ink: '#e0a19c', surface: '#302321', edge: '#5b3a38' },
+            pending: { DEFAULT: '#817b6e', surface: '#2d2b22', edge: '#423d30' },
+            execute: { DEFAULT: '#285c45', hover: '#326c53', edge: '#386c54' },
+          },
           fontFamily: {
             sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
             mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
@@ -23,9 +42,9 @@
     };
   </script>
   <style>
-    html { background: #0a0e14; }
+    html { background: #1b1b19; color-scheme: dark; }
     body { font-feature-settings: "cv02","cv03","cv04","cv11"; }
-    #plan-modal::backdrop { background: rgba(6,9,14,0.78); backdrop-filter: blur(2px); }
+    #plan-modal::backdrop { background: rgba(17,17,15,0.78); backdrop-filter: blur(2px); }
     summary { list-style: none; }
     summary::-webkit-details-marker { display: none; }
     .chev { transition: transform .18s ease; }
@@ -34,45 +53,45 @@
     @keyframes reveal { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #232b38; border-radius: 8px; }
-    ::-webkit-scrollbar-thumb:hover { background: #2d3747; }
+    ::-webkit-scrollbar-thumb { background: #3d3d35; border-radius: 8px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4a4a40; }
     @media (prefers-reduced-motion: reduce) {
       .task-body { animation: none; }
       .chev { transition: none; }
     }
   </style>
 </head>
-<body class="bg-[#0a0e14] text-[#dde3ec] font-sans antialiased max-w-[1400px] mx-auto px-3 py-4 sm:px-6 sm:py-8 selection:bg-teal-500/30">
-  <header class="flex gap-2 items-center flex-wrap mb-3 pb-3 border-b border-[#1c2431]">
+<body class="text-ink font-sans antialiased max-w-[1400px] mx-auto px-3 py-4 sm:px-6 sm:py-8 selection:bg-success/30">
+  <header class="flex gap-2 items-center flex-wrap mb-3 pb-3 border-b border-line">
     <div class="mr-auto sm:mr-2 flex items-baseline gap-2">
-      <h1 class="text-base sm:text-[1.1rem] font-semibold tracking-tight text-white m-0">Pi Plan Manager</h1>
-      <span class="font-mono text-[11px] text-[#5b6577]">ppm</span>
+      <h1 class="text-base sm:text-[1.1rem] font-semibold tracking-tight text-heading m-0">Pi Plan Manager</h1>
+      <span class="font-mono text-[11px] text-dim">ppm</span>
     </div>
-    <button id="refresh" class="order-2 sm:order-none text-[#dde3ec] bg-[#111720] border border-[#232b38] rounded-md px-3 py-1.5 text-xs sm:text-sm cursor-pointer hover:border-teal-500/50 hover:text-teal-300 transition-colors focus-visible:ring-2 focus-visible:ring-teal-500/60 outline-none">Refresh</button>
-    <select id="project" aria-label="Project" class="order-3 sm:order-none w-full sm:w-auto min-w-0 sm:max-w-[420px] truncate text-[#dde3ec] bg-[#111720] border border-[#232b38] rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60 hover:border-[#2d3747] transition-colors"></select>
-    <select id="plan-filter" aria-label="Completion filter" class="order-4 sm:order-none text-[#dde3ec] bg-[#111720] border border-[#232b38] rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60 hover:border-[#2d3747] transition-colors">
+    <button id="refresh" class="order-2 sm:order-none text-ink bg-control border border-line rounded-md px-3 py-1.5 text-xs sm:text-sm cursor-pointer hover:border-success/50 hover:text-success-ink transition-colors focus-visible:ring-2 focus-visible:ring-success/80 outline-none">Refresh</button>
+    <select id="project" aria-label="Project" class="order-3 sm:order-none w-full sm:w-auto min-w-0 sm:max-w-[420px] truncate text-ink bg-control border border-line rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-success/80 hover:border-edge transition-colors"></select>
+    <select id="plan-filter" aria-label="Completion filter" class="order-4 sm:order-none text-ink bg-control border border-line rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-success/80 hover:border-edge transition-colors">
       <option value="all">All plans</option>
       <option value="zero">0%</option>
       <option value="partial">1–99%</option>
       <option value="complete">100%</option>
     </select>
-    <select id="plan-sort" aria-label="Sort plans" class="order-4 sm:order-none text-[#dde3ec] bg-[#111720] border border-[#232b38] rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60 hover:border-[#2d3747] transition-colors">
+    <select id="plan-sort" aria-label="Sort plans" class="order-4 sm:order-none text-ink bg-control border border-line rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-success/80 hover:border-edge transition-colors">
       <option value="completion">Sort: completion</option>
       <option value="name">Sort: A–Z</option>
       <option value="created">Sort: newest created</option>
       <option value="updated">Sort: recently updated</option>
     </select>
-    <input id="search" type="search" aria-label="Search tasks" placeholder="Search tasks, files, agent…" class="order-5 sm:order-none flex-1 min-w-0 sm:min-w-[240px] sm:flex-none text-[#dde3ec] placeholder:text-[#5b6577] bg-[#111720] border border-[#232b38] rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60 hover:border-[#2d3747] transition-colors">
+    <input id="search" type="search" aria-label="Search tasks" placeholder="Search tasks, files, agent…" class="order-5 sm:order-none flex-1 min-w-0 sm:min-w-[240px] sm:flex-none text-ink placeholder:text-dim bg-control border border-line rounded-md px-2.5 py-1.5 text-xs sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-success/80 hover:border-edge transition-colors">
   </header>
   <main id="content" class="space-y-2">
-    <p class="text-[#5b6577] text-sm">Loading…</p>
+    <p class="text-dim text-sm">Loading…</p>
   </main>
-  <dialog id="plan-modal" class="w-[min(900px,94vw)] max-h-[85vh] text-[#dde3ec] bg-[#0d1218] border border-[#232b38] rounded-xl p-0 shadow-2xl shadow-black/60">
-    <div class="sticky top-0 flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-[#111720] border-b border-[#232b38] rounded-t-xl">
-      <strong id="modal-title" class="mr-auto text-sm font-medium text-white truncate"></strong>
-      <button id="modal-close" class="text-[#dde3ec] bg-[#181f2a] border border-[#232b38] rounded-md px-3 py-1.5 text-xs cursor-pointer hover:border-teal-500/50 hover:text-teal-300 transition-colors">Close</button>
+  <dialog id="plan-modal" class="w-[min(900px,94vw)] max-h-[85vh] text-ink bg-surface border border-line rounded-xl p-0 shadow-2xl shadow-black/60">
+    <div class="sticky top-0 flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-control border-b border-line rounded-t-xl">
+      <strong id="modal-title" class="mr-auto text-sm font-medium text-heading truncate"></strong>
+      <button id="modal-close" class="text-ink bg-control-hover border border-line rounded-md px-3 py-1.5 text-xs cursor-pointer hover:border-success/50 hover:text-success-ink transition-colors">Close</button>
     </div>
-    <pre id="modal-content" class="p-3 sm:p-4 m-0 overflow-auto whitespace-pre-wrap text-[11px] sm:text-[12px] leading-relaxed font-mono text-[#c3ccd9]"></pre>
+    <pre id="modal-content" class="p-3 sm:p-4 m-0 overflow-auto whitespace-pre-wrap text-[11px] sm:text-[12px] leading-relaxed font-mono text-secondary"></pre>
   </dialog>
   <script src="./ppm-data.js"></script>
   <script src="./app.js"></script>

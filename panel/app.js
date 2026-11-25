@@ -44,46 +44,46 @@
 
   // ============== design tokens ==============
   var TASK_BORDER = {
-    completed: "border-l-emerald-500",
-    in_progress: "border-l-sky-400",
-    fail: "border-l-rose-500",
-    todo: "border-l-amber-400",
+    completed: "border-l-success",
+    in_progress: "border-l-active",
+    fail: "border-l-danger",
+    todo: "border-l-pending",
   };
   var TASK_DOT = {
-    completed: "bg-emerald-500",
-    in_progress: "bg-sky-400",
-    fail: "bg-rose-500",
-    todo: "bg-amber-400",
+    completed: "bg-success",
+    in_progress: "bg-active",
+    fail: "bg-danger",
+    todo: "bg-pending",
   };
-  var TASK_BASE = "border-l-2 bg-[#111720] hover:bg-[#141b26] rounded-r-lg px-2.5 sm:px-3.5 py-1 my-1.5 sm:my-2 transition-colors";
+  var TASK_BASE = "border-l-2 bg-control hover:bg-control-hover rounded-r-lg px-2.5 sm:px-3.5 py-1 my-1.5 sm:my-2 transition-colors";
   var BADGE_BASE = "inline-flex items-center gap-1 text-[10px] leading-4 font-semibold tracking-wide px-1.5 rounded-full border font-mono whitespace-nowrap";
   var BADGE_VARIANT = {
-    ready: "text-emerald-300 bg-emerald-950/60 border-emerald-800/70",
-    blocked: "text-amber-300 bg-amber-950/60 border-amber-800/70",
-    stuck: "text-rose-300 bg-rose-950/60 border-rose-800/70",
-    parallel: "text-sky-300 bg-sky-950/60 border-sky-800/70",
-    waiting: "text-[#8996a8] bg-[#161d27] border-[#2d3747]",
-    current: "text-teal-300 bg-teal-950/60 border-teal-800/70",
-    agent: "text-violet-300 bg-violet-950/50 border-violet-800/60",
+    ready: "text-success-ink bg-success-surface border-success-edge",
+    blocked: "text-warning-ink bg-warning-surface border-warning-edge",
+    stuck: "text-danger-ink bg-danger-surface border-danger-edge",
+    parallel: "text-active-ink bg-active-surface border-active-edge",
+    waiting: "text-muted bg-pending-surface border-pending-edge",
+    current: "text-active-ink bg-active-surface border-active-edge",
+    agent: "text-muted bg-surface border-edge",
   };
   var COMPLETION_VARIANT = {
-    zero: { text: "text-[#8996a8]", bar: "bg-[#39424f]" },
-    partial: { text: "text-amber-300", bar: "bg-amber-400" },
-    complete: { text: "text-emerald-300", bar: "bg-emerald-500" },
+    zero: { text: "text-dim", bar: "bg-track" },
+    partial: { text: "text-warning-ink", bar: "bg-warning" },
+    complete: { text: "text-success-ink", bar: "bg-success" },
   };
   var TITLE_VARIANT = {
-    zero: "text-[#c3ccd9]",
-    partial: "text-amber-100",
-    complete: "text-emerald-100",
+    zero: "text-ink",
+    partial: "text-heading",
+    complete: "text-heading",
   };
-  var MUTED = "text-[#8996a8] text-[12px] sm:text-[13px]";
+  var MUTED = "text-muted text-[12px] sm:text-[13px]";
   var TAB_BASE = "font-mono text-[11px] px-2.5 py-1 -mb-px border-b-2 cursor-pointer transition-colors";
-  var TAB_ACTIVE = "text-teal-300 border-teal-400";
-  var TAB_IDLE = "text-[#8996a8] border-transparent hover:text-[#c3ccd9]";
-  var META = "font-mono text-[10.5px] sm:text-[11px] text-[#6d7889]";
-  var BUTTON = "text-[#c3ccd9] bg-[#161d27] border border-[#232b38] rounded-md px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium cursor-pointer hover:border-teal-500/50 hover:text-teal-300 transition-colors";
-  var BUTTON_PRIMARY = "text-[#0a0e14] bg-teal-400 border border-teal-400 rounded-md px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold cursor-pointer hover:bg-teal-300 transition-colors";
-  var CHEVRON = '<svg class="chev w-3.5 h-3.5 mt-1 shrink-0 text-[#6d7889]" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var TAB_ACTIVE = "text-heading border-success";
+  var TAB_IDLE = "text-muted border-transparent hover:text-secondary";
+  var META = "font-mono text-[10.5px] sm:text-[11px] text-dim";
+  var BUTTON = "text-secondary bg-control border border-line rounded-md px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium cursor-pointer hover:border-success/50 hover:text-success-ink transition-colors";
+  var BUTTON_PRIMARY = "text-heading bg-execute border border-execute-edge rounded-md px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-semibold cursor-pointer hover:bg-execute-hover transition-colors";
+  var CHEVRON = '<svg class="chev w-3.5 h-3.5 mt-1 shrink-0 text-dim" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   // ============== helpers ==============
   function esc(value) {
@@ -155,7 +155,7 @@
   }
   function ProgressBar(percent, variant) {
     var v = COMPLETION_VARIANT[variant];
-    return '<div class="h-1 w-full rounded-full bg-[#1c2431] overflow-hidden" role="progressbar" aria-valuenow="' + percent + '" aria-valuemin="0" aria-valuemax="100"><div class="' + cls("h-full rounded-full transition-[width]", v.bar) + '" style="width:' + percent + '%"></div></div>';
+    return '<div class="h-1 w-full rounded-full bg-track overflow-hidden" role="progressbar" aria-valuenow="' + percent + '" aria-valuemin="0" aria-valuemax="100"><div class="' + cls("h-full rounded-full transition-[width]", v.bar) + '" style="width:' + percent + '%"></div></div>';
   }
   function CompletionBadge(statsValue) {
     var variant = completionClass(statsValue.percent);
@@ -172,7 +172,7 @@
   }
   function Notice(kind, items) {
     if (!items.length) return "";
-    var tone = kind === "error" ? "text-rose-300 border-rose-900/50 bg-rose-950/30" : "text-amber-200/90 border-amber-900/50 bg-amber-950/20";
+    var tone = kind === "error" ? "text-danger-ink border-danger-edge bg-danger-surface" : "text-warning-ink border-warning-edge bg-warning-surface";
     var label = kind === "error" ? "Errors (" + items.length + ")" : "Warnings (" + items.length + ")";
     return '<div class="' + cls("text-[11px] sm:text-[12px] font-mono border rounded-lg px-2.5 py-2 my-2 break-words", tone) + '"><div class="font-semibold mb-0.5">' + label + "</div>" + items.map(function (item) { return "<div>• " + esc(item) + "</div>"; }).join("") + "</div>";
   }
@@ -194,7 +194,7 @@
   function TaskSummary(task, ctx) {
     var dot = '<span class="' + cls("inline-block w-1.5 h-1.5 rounded-full shrink-0", TASK_DOT[task.status]) + '"></span>';
     var agent = task.agent ? Badge("agent", task.agent, "Agent role hint") : "";
-    return '<span class="flex items-center gap-2 min-w-0 w-full"><span class="font-mono text-[10.5px] sm:text-[11px] text-[#5b6577] shrink-0">' + esc(task.id) + '</span><span class="truncate text-[13px] sm:text-[13.5px] text-[#dde3ec]">' + esc(task.title) + '</span></span><span class="flex flex-wrap items-center gap-1.5 mt-1 sm:mt-0 sm:justify-end">' + dot + '<span class="' + cls(MUTED, "font-mono text-[11px]") + '">' + esc(task.status) + "</span>" + agent + TaskBadge(task, ctx) + "</span>";
+    return '<span class="flex items-center gap-2 min-w-0 w-full"><span class="font-mono text-[10.5px] sm:text-[11px] text-dim shrink-0">' + esc(task.id) + '</span><span class="truncate text-[13px] sm:text-[13.5px] text-ink">' + esc(task.title) + '</span></span><span class="flex flex-wrap items-center gap-1.5 mt-1 sm:mt-0 sm:justify-end">' + dot + '<span class="' + cls(MUTED, "font-mono text-[11px]") + '">' + esc(task.status) + "</span>" + agent + TaskBadge(task, ctx) + "</span>";
   }
   function TaskBody(task) {
     var deps = list(task.pre_request);
@@ -202,10 +202,10 @@
     var meta = [
       deps.length ? '<div class="' + META + '">pre_request: ' + deps.map(esc).join(", ") + "</div>" : "",
       task.agent ? '<div class="' + META + '">agent: ' + esc(task.agent) + "</div>" : "",
-      files.length ? '<div class="' + META + ' break-all"><span>files:</span><ul class="mt-0.5 pl-3 list-disc marker:text-[#3d4757] space-y-0.5">' + files.map(function (file) { return "<li>" + esc(file) + "</li>"; }).join("") + "</ul></div>" : "",
+      files.length ? '<div class="' + META + ' break-all"><span>files:</span><ul class="mt-0.5 pl-3 list-disc marker:text-dim space-y-0.5">' + files.map(function (file) { return "<li>" + esc(file) + "</li>"; }).join("") + "</ul></div>" : "",
     ].join("");
     var section = function (label, body) {
-      return '<section class="mt-2"><div class="text-[#6d7889] text-[10.5px] font-semibold tracking-wide">' + label + '</div><div class="text-[12px] sm:text-[13px] text-[#b7c0cc] leading-snug mt-1 whitespace-pre-wrap break-words">' + esc(body) + "</div></section>";
+      return '<section class="mt-2"><div class="text-dim text-[10.5px] font-semibold tracking-wide">' + label + '</div><div class="text-[12px] sm:text-[13px] text-secondary leading-snug mt-1 whitespace-pre-wrap break-words">' + esc(body) + "</div></section>";
     };
     var d = task.details || {};
     var detailText = [
@@ -220,9 +220,9 @@
     var entries = Array.isArray(progress) ? progress : [];
     if (!entries.length) return "";
     var items = entries.map(function (entry) {
-      return '<li class="pl-0.5">' + (entry.time ? '<div class="' + META + ' break-all">[' + esc(entry.time) + "]</div>" : "") + '<div class="text-[12px] sm:text-[13px] text-[#b7c0cc] leading-snug whitespace-pre-wrap break-words">' + esc(entry.detail) + "</div></li>";
+      return '<li class="pl-0.5">' + (entry.time ? '<div class="' + META + ' break-all">[' + esc(entry.time) + "]</div>" : "") + '<div class="text-[12px] sm:text-[13px] text-secondary leading-snug whitespace-pre-wrap break-words">' + esc(entry.detail) + "</div></li>";
     }).join("");
-    return '<section class="mt-2"><div class="text-[#6d7889] text-[10.5px] font-semibold tracking-wide">Progress</div><ul class="mt-1 list-disc pl-4 space-y-1.5 marker:text-[#3d4757]">' + items + "</ul></section>";
+    return '<section class="mt-2"><div class="text-dim text-[10.5px] font-semibold tracking-wide">Progress</div><ul class="mt-1 list-disc pl-4 space-y-1.5 marker:text-dim">' + items + "</ul></section>";
   }
   function TaskRow(options) {
     var task = options.task, ctx = options.ctx, key = options.key;
@@ -252,11 +252,11 @@
   }
   // One tab per wave that has visible tasks; counts cover the whole wave, not just search matches.
   function WaveTabs(key, waveNums, active, phaseTasks, ctx) {
-    return '<div role="tablist" class="flex flex-wrap gap-1 mt-2 border-b border-[#1c2431]">' + waveNums.map(function (n) {
+    return '<div role="tablist" class="flex flex-wrap gap-1 mt-2 border-b border-line">' + waveNums.map(function (n) {
       var waveTasks = phaseTasks.filter(function (task) { return waveOf(ctx, task) === n; });
       var done = waveTasks.filter(function (task) { return task.status === "completed"; }).length;
       var selected = n === active;
-      var count = '<span class="' + (done === waveTasks.length ? "text-emerald-400" : "text-[#5b6577]") + '">' + done + "/" + waveTasks.length + "</span>";
+      var count = '<span class="' + (done === waveTasks.length ? "text-success-ink" : "text-dim") + '">' + done + "/" + waveTasks.length + "</span>";
       return '<button type="button" role="tab" aria-selected="' + selected + '" data-wave-tab="' + esc(key) + '" data-wave="' + n + '" title="Wave ' + n + ": " + done + "/" + waveTasks.length + ' completed" class="' + cls(TAB_BASE, selected ? TAB_ACTIVE : TAB_IDLE) + '">W' + n + " " + count + "</button>";
     }).join("") + "</div>";
   }
@@ -293,7 +293,7 @@
       ? WaveTabs(key, waveNums, active, phase.tasks, ctx) + '<div role="tabpanel">' + shown.map(function (task) { return TaskRow({ task: task, ctx: ctx, key: key + "/" + task.id }); }).join("") + "</div>"
       : '<span class="' + MUTED + '">No tasks</span>';
     var body = '<div class="pt-2">' + ProgressBar(phaseStats.percent, variant) + schedule + Notice("error", errors) + Notice("warning", warnings) + PhaseActions(plan, phase) + taskList + "</div>";
-    return '<details data-key="' + esc(key) + '"' + openAttr + ' class="bg-[#0d1218] border border-[#1c2431] rounded-lg p-2.5 sm:p-3.5 min-w-0">' + summary + body + "</details>";
+    return '<details data-key="' + esc(key) + '"' + openAttr + ' class="bg-surface border border-edge rounded-lg p-2.5 sm:p-3.5 min-w-0">' + summary + body + "</details>";
   }
 
   // ============== plan components ==============
@@ -309,7 +309,7 @@
     return '<div class="flex flex-wrap gap-2 items-center my-2.5 sm:my-3">' + Button({ label: "Execute Plan", className: BUTTON_PRIMARY, dataset: { prompt: PlanExecPrompt(plan.name) } }) + Button({ label: "Audit Plan", dataset: { prompt: PlanAuditPrompt(plan.name) } }) + reformat + Button({ label: "Open plan.md", dataset: { plan: plan.name, path: plan.filePath || "" } }) + "</div>";
   }
   function PlanHeading(plan, percent) {
-    return '<span class="flex flex-col gap-0.5 min-w-0 mr-auto"><span class="text-[14px] sm:text-[15px] font-semibold ' + titleClass(percent) + ' truncate">' + esc(plan.name) + '</span><span class="text-[#6d7889] text-[10.5px] sm:text-[11.5px] font-normal font-mono">created ' + esc(plan.createdAt || "—") + " · updated " + esc(plan.lastUpdated || "—") + "</span></span>";
+    return '<span class="flex flex-col gap-0.5 min-w-0 mr-auto"><span class="text-[14px] sm:text-[15px] font-semibold ' + titleClass(percent) + ' truncate">' + esc(plan.name) + '</span><span class="text-dim text-[10.5px] sm:text-[11.5px] font-normal font-mono">created ' + esc(plan.createdAt || "—") + " · updated " + esc(plan.lastUpdated || "—") + "</span></span>";
   }
   function Plan(options) {
     var plan = options.plan, planStats = options.planStats, projectId = options.projectId, query = options.query;
@@ -323,7 +323,7 @@
     var openAttr = (query || isOpen(planKey, false)) ? " open" : "";
     var issues = list(plan.errors).length + plan.phases.reduce(function (sum, phase) { return sum + list(phase.errors).length; }, 0);
     var issueBadge = issues ? Badge("stuck", issues + " error" + (issues === 1 ? "" : "s"), "plan_validate would fail") : "";
-    return '<details data-key="' + esc(planKey) + '"' + openAttr + ' class="bg-[#111720] border border-[#232b38] rounded-xl p-2"><summary class="cursor-pointer flex gap-2 sm:gap-3 items-start">' + CHEVRON + PlanHeading(plan, planStats.percent) + '<span class="flex flex-col items-end gap-1 sm:gap-1.5 shrink-0">' + CompletionBadge(planStats) + '<span class="flex items-center gap-1.5">' + issueBadge + '<span class="' + MUTED + ' text-[11px]">' + plan.phases.length + " phase" + (plan.phases.length === 1 ? "" : "s") + "</span></span></span></summary>" + '<div class="pl-0 sm:pl-[22px] pt-1"><div class="mb-1">' + ProgressBar(planStats.percent, variant) + "</div>" + Notice("error", list(plan.errors)) + PlanActions(plan) + '<div class="grid gap-2 sm:gap-3 grid-cols-1 md:grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start">' + (phaseSections.join("") || '<span class="' + MUTED + '">No phases</span>') + "</div></div></details>";
+    return '<details data-key="' + esc(planKey) + '"' + openAttr + ' class="bg-surface border border-line rounded-xl p-2"><summary class="cursor-pointer flex gap-2 sm:gap-3 items-start">' + CHEVRON + PlanHeading(plan, planStats.percent) + '<span class="flex flex-col items-end gap-1 sm:gap-1.5 shrink-0">' + CompletionBadge(planStats) + '<span class="flex items-center gap-1.5">' + issueBadge + '<span class="' + MUTED + ' text-[11px]">' + plan.phases.length + " phase" + (plan.phases.length === 1 ? "" : "s") + "</span></span></span></summary>" + '<div class="pl-0 sm:pl-[22px] pt-1"><div class="mb-1">' + ProgressBar(planStats.percent, variant) + "</div>" + Notice("error", list(plan.errors)) + PlanActions(plan) + '<div class="grid gap-2 sm:gap-3 grid-cols-1 md:grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start">' + (phaseSections.join("") || '<span class="' + MUTED + '">No phases</span>') + "</div></div></details>";
   }
 
   // ============== render ==============
@@ -340,11 +340,11 @@
     select.value = state.project;
     var project = projects.find(function (item) { return item.id === state.project; });
     if (!project) {
-      document.querySelector("#content").innerHTML = '<div class="text-[#8996a8] text-sm border border-dashed border-[#232b38] rounded-lg p-6 text-center">No <code class="font-mono text-teal-300 bg-[#161d27] px-1.5 py-0.5 rounded">.ppm</code> plan found in this workspace. Run <code class="font-mono text-teal-300 bg-[#161d27] px-1.5 py-0.5 rounded">ppm init</code>.</div>';
+      document.querySelector("#content").innerHTML = '<div class="text-muted text-sm border border-dashed border-line rounded-lg p-6 text-center">No <code class="font-mono text-success-ink bg-control px-1.5 py-0.5 rounded">.ppm</code> plan found in this workspace. Run <code class="font-mono text-success-ink bg-control px-1.5 py-0.5 rounded">ppm init</code>.</div>';
       return;
     }
     if (project.error) {
-      document.querySelector("#content").innerHTML = '<p class="text-rose-300 text-sm border border-rose-900/50 bg-rose-950/30 rounded-lg p-3.5">' + esc(project.error) + "</p>";
+      document.querySelector("#content").innerHTML = '<p class="text-danger-ink text-sm border border-danger-edge bg-danger-surface rounded-lg p-3.5">' + esc(project.error) + "</p>";
       return;
     }
     var query = state.query.trim().toLowerCase();
@@ -355,14 +355,14 @@
       .map(function (entry) { return Plan({ plan: entry.plan, planStats: entry.planStats, projectId: project.id, query: query }); })
       .filter(Boolean)
       .join("");
-    var notice = state.notice ? '<p class="' + (state.notice.kind === "error" ? "text-rose-300 border-rose-900/50 bg-rose-950/30" : "text-teal-200 border-teal-900/50 bg-teal-950/30") + ' text-xs sm:text-sm font-mono border rounded-lg p-2.5 break-words" role="status">' + esc(state.notice.text) + "</p>" : "";
-    document.querySelector("#content").innerHTML = notice + (plans || '<div class="text-[#8996a8] text-sm border border-dashed border-[#232b38] rounded-lg p-6 text-center">No plans found.</div>');
+    var notice = state.notice ? '<p class="' + (state.notice.kind === "error" ? "text-danger-ink border-danger-edge bg-danger-surface" : "text-success-ink border-success-edge bg-success-surface") + ' text-xs sm:text-sm font-mono border rounded-lg p-2.5 break-words" role="status">' + esc(state.notice.text) + "</p>" : "";
+    document.querySelector("#content").innerHTML = notice + (plans || '<div class="text-muted text-sm border border-dashed border-line rounded-lg p-6 text-center">No plans found.</div>');
   }
 
   var loading = false;
   async function load() {
     if (!state.cwd && !window.PpmStandalone) {
-      document.querySelector("#content").innerHTML = '<div class="text-[#8996a8] text-sm border border-dashed border-[#232b38] rounded-lg p-6 text-center">Waiting for a workspace…</div>';
+      document.querySelector("#content").innerHTML = '<div class="text-muted text-sm border border-dashed border-line rounded-lg p-6 text-center">Waiting for a workspace…</div>';
       return;
     }
     if (loading || document.hidden) return;
@@ -371,7 +371,7 @@
       state.data = await window.PpmData.loadDashboard(state.cwd);
       render();
     } catch (error) {
-      document.querySelector("#content").innerHTML = '<p class="text-rose-300 text-sm border border-rose-900/50 bg-rose-950/30 rounded-lg p-3.5">' + esc(error.message) + "</p>";
+      document.querySelector("#content").innerHTML = '<p class="text-danger-ink text-sm border border-danger-edge bg-danger-surface rounded-lg p-3.5">' + esc(error.message) + "</p>";
     } finally {
       loading = false;
     }
